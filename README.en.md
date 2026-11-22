@@ -13,8 +13,8 @@ folding things like `<div class="status">` or `【status】` into collapsible bl
 
 ## Install
 
-Android 8.0+, sideload this: **[dist/chat-viewer-1.0-debug.apk](dist/chat-viewer-1.0-debug.apk)**
-(debug-signed, ~57 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
+Android 8.0+, sideload this: **[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
+(1.1, debug-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
 and `allowBackup` is off, so the recent-files list never leaves the device via cloud backup.
 
 No app needed either — open `prototype/index.html` in a browser (`file://` works, no server).
@@ -27,6 +27,14 @@ No app needed either — open `prototype/index.html` in a browser (`file://` wor
   both a role field and a text field.
 - **Restores ChatGPT trees correctly.** `mapping` is a graph; walking it naively resurrects edited-away
   branches. It walks back from `current_node` via `parent`, reverses, and counts the discarded siblings.
+- **Opens ZIP exports directly.** It reads the central directory itself (with a pure-JS inflate
+  fallback for old WebViews), handles stored/deflate, ZIP64 and GBK filenames, scores entries by name
+  and content to find the chat file, merges `conversations-000.json` shards, and falls back to a
+  pickable file list with a "looks like chat" filter. Encrypted entries are explained, not guessed at.
+- **Full-text search across every conversation**: hit list with "conversation · excerpt", click to jump
+  and flash the message, Enter to cycle, multi-word AND. Substring scan, no index — instant for the
+  file sizes the app accepts. On narrow screens the header grows a "Search" button that scrolls to the
+  preview column and focuses the box (the single-column layout puts it far down the page).
 - **Folds inline decorations** (status / inner thoughts / summary / OOC / choices) into collapsible,
   colour-coded blocks, classified with bilingual keyword tables plus `class` names and CJK pseudo-tags.
 - **You decide the sides.** Per-role (me / AI / system / other) and per-block alignment, shared between
@@ -54,9 +62,9 @@ dist/        packaged APK
 Node 22+ only — no dependencies, `fetch` and `WebSocket` are global.
 
 ```bash
-npm test          # 74 logic assertions
+npm test          # 86 logic assertions
 npm run serve     # http://127.0.0.1:8765
-npm run verify    # 8 end-to-end checks in headless Edge/Chrome (auto-launched, auto-cleaned)
+npm run verify    # 10 end-to-end checks in headless Edge/Chrome (auto-launched, auto-cleaned)
 npm run apk       # build the APK (needs an Android SDK + JDK 11+)
 ```
 
@@ -69,7 +77,8 @@ GitHub Actions runs `npm test` plus a check that `samples.js` is a deterministic
 
 - The web version parses everything in memory; the Android shell caps a single file at 16 MB.
   The two-pass streaming design in [docs/design-architecture.md](docs/design-architecture.md) is not implemented yet.
-- No browsing inside ZIP archives, no PDF/image export, no CSV.
+- ZIP is read-only: encrypted entries need a password (unsupported), nested zips are only pointed out,
+  entries over 48 MB are not auto-read. No PDF/image export, no CSV. Search is a substring scan.
 - HTML exports are parsed heuristically by tags and class names, not a real DOM.
 - Built and verified on Windows only; scripts are Node so macOS/Linux should work but are untested.
 - Debug signing, not a store release.

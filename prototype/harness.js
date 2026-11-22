@@ -30,7 +30,22 @@ async function launch(opts) {
   const child = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run',
     '--remote-debugging-port=' + port, '--user-data-dir=' + prof, 'about:blank'
-  ], { stdio: 'ignore' });
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+  // 中途失败（process.exit）时别把浏览器留在后台占着端口
+  const live = launch._live || (launch._live = []);
+  live.push({ child, prof });
+  if (!launch._hooked) {
+    launch._hooked = true;
+    const reap = () => {
+      for (const it of launch._live) {
+        try { it.child.kill(); } catch (e) {}
+        try { fs.rmSync(it.prof, { recursive: true, force: true }); } catch (e) {}
+      }
+    };
+    process.once('exit', reap);
+    process.once('SIGINT', () => { reap(); process.exit(130); });
+  }
 
   let list = null;
   for (let i = 0; i < 60; i++) {
@@ -43,13 +58,18 @@ async function launch(opts) {
   if (!list || !list.length) { try { child.kill(); } catch (e) {} throw new Error('浏览器没起来（端口 ' + port + '）'); }
 
   const page = list.find((t) => t.type === 'page');
+  if (!page || page.url !== 'about:blank') throw new Error('连到了别的浏览器页面：' + (page && page.url));
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('websocket 连接失败')); });
   let id = 0;
   const pending = new Map();
+  const logs = [];
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
+    if (m.method === 'Runtime.consoleAPICalled') {
+      logs.push(m.params.args.map((a) => (a.value !== undefined ? a.value : a.description || '')).join(' '));
+    }
   };
   const send = (method, params) => new Promise((res, rej) => {
     const i = ++id;
@@ -76,9 +96,11 @@ async function launch(opts) {
     try { ws.close(); } catch (e) {}
     try { child.kill(); } catch (e) {}
     try { fs.rmSync(prof, { recursive: true, force: true, maxRetries: 3 }); } catch (e) {}
+    const at = live.indexOf(live.find((it) => it.child === child));
+    if (at >= 0) live.splice(at, 1);
   };
 
-  return { send, ev, shot, sleep, close, BASE, port };
+  return { send, ev, shot, sleep, close, BASE, port, logs };
 }
 
 module.exports = { launch, BASE, sleep };

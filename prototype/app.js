@@ -18,7 +18,7 @@
   var S = {
     name: '', size: 0, bytes: null, text: '', data: null,
     kind: '', encoding: '', format: '', note: '',
-    candidates: [], recipe: null, result: null, convs: [],
+    candidates: [], recipe: null, result: null, convs: [], zip: null,
     mode: 'auto', activeConv: 0, isText: false,
     textResult: null, textOpts: { blockCategories: {}, attach: 'inline' },
     // 对齐：每种角色气泡靠哪一侧。默认「我」在左（阅读式），自动/手动模式都能改
@@ -61,19 +61,78 @@
     return { text: s, encoding: 'UTF-8' };
   }
 
-  function setContent(name, bytes) {
+  function resetContent(name, bytes) {
     S.name = name; S.size = bytes.length; S.bytes = bytes;
+    S.text = ''; S.kind = ''; S.encoding = ''; S.format = ''; S.note = '';
+    S.data = null; S.candidates = []; S.recipe = null; S.result = null;
+    S.convs = []; S.activeConv = 0; S.isText = false; S.textResult = null; S.zip = null;
+    // 换了文件，上一轮的搜索结果就作废
+    var qe = document.getElementById('q');
+    if (qe) qe.value = '';
+    var hb = document.getElementById('qHits');
+    if (hb) { hb.hidden = true; hb.innerHTML = ''; }
+    var qi = document.getElementById('qInfo');
+    if (qi) qi.textContent = '';
+    if (typeof Q !== 'undefined' && Q) { Q.hits = []; Q.at = -1; Q.terms = []; }
+  }
+
+  function setContent(name, bytes) {
+    resetContent(name, bytes);
+    ingest(bytes, false);
+  }
+
+  // 没进魔数表、但字节里全是控制字符/空字节的，多半是二进制（音频、视频、图片变种）
+  function looksBinaryBytes(bytes) {
+    var n = Math.min(bytes.length, 512);
+    if (!n) return false;
+    if (bytes[0] === 0xFF && (bytes[1] === 0xFE || bytes[1] === 0xFE)) return false; // UTF-16 BOM，交给 decode
+    if (bytes[0] === 0xFE && bytes[1] === 0xFF) return false;
+    var ctrl = 0;
+    for (var i = 0; i < n; i++) {
+      var b = bytes[i];
+      if (b === 0) return true;
+      if (b < 7 || (b > 13 && b < 32)) ctrl++;
+    }
+    return ctrl / n > 0.3;
+  }
+
+  // 已经是文本就直接走识别；容器类（zip）单独处理
+  function ingest(bytes, fromZip) {
     var magic = core.detectMagic(bytes);
+    if (magic === 'ZIP') {
+      if (fromZip) {
+        S.kind = 'ZIP'; S.encoding = '-'; S.format = '压缩包 ZIP';
+        S.note = '压缩包里还套着压缩包，先解开外面这层再来。';
+        renderAll(); return;
+      }
+      openZip(S.name, bytes);
+      return;
+    }
     if (magic && magic !== 'EMPTY') {
-      S.kind = magic; S.data = null; S.candidates = []; S.convs = []; S.recipe = null; S.isText = false;
-      S.encoding = '-'; S.format = 'binary / container';
-      S.note = magic === 'ZIP' ? '这是压缩包：原型不负责解压，请在桌面端解压后用解压出的 json 再试。' : '这是二进制文件（' + magic + '），没有可展示的聊天结构。';
+      S.kind = magic; S.encoding = '-'; S.format = 'binary / container';
+      S.note = '这是二进制文件（' + magic + '），没有可展示的聊天结构。';
+      renderAll(); return;
+    }
+    if (looksBinaryBytes(bytes)) {
+      S.kind = 'BINARY'; S.encoding = '-'; S.format = 'binary';
+      S.note = '这是二进制文件，看起来不是聊天记录（' + bytes.length + ' 字节）。';
       renderAll(); return;
     }
     var dec = decodeBytes(bytes);
-    S.text = dec.text; S.encoding = dec.encoding; S.isText = false; S.data = null; S.candidates = []; S.recipe = null; S.convs = [];
+    S.text = dec.text; S.encoding = dec.encoding;
     parseText(S.text);
     renderAll();
+  }
+
+  // 已经拿到对象（例如压缩包里多个分片合并后）时直接用
+  function applyJsonData(name, obj, note) {
+    if (name) S.name = name;
+    S.data = obj; S.isText = false; S.text = ''; S.note = note || ''; S.kind = 'JSON';
+    S.candidates = core.inferCandidates(obj);
+    S.format = S.candidates.length ? S.candidates[0].format : 'JSON（未识别出消息结构）';
+    if (!S.candidates.length) {
+      S.note = (S.note ? S.note + ' · ' : '') + '没有找到「一堆对象，且有角色字段和正文字段」的结构，请到手动映射里指定。';
+    }
   }
 
   function parseText(text) {
@@ -93,15 +152,194 @@
       if (objs && objs.length) { parsed = objs; S.note = '按 JSONL 解析：每行一个对象'; }
     }
     if (parsed != null) {
-      S.data = parsed; S.kind = 'JSON'; S.note = ''; S.isText = false;
-      var cands = core.inferCandidates(parsed);
-      S.candidates = cands;
-      S.format = cands.length ? cands[0].format : 'JSON（未识别出消息结构）';
-      if (!cands.length) S.note = '没有找到「一堆对象，且有角色字段和正文字段」的结构，请到手动映射里指定。';
+      applyJsonData(S.name, parsed, S.note);
       return;
     }
 
     parseRichText(text, false);
+  }
+
+  // ---------- 压缩包 ----------
+  // 聊天导出的 zip 通常长这样：ChatGPT 是 conversations.json（可能拆成 conversations-000.json…），
+  // Claude 是 conversations.json + projects.json，微信/QQ 导出则是一堆 txt。所以先按「名字像不像 + 能不能解析」挑，
+  // 挑不出来就把条目列出来让人点，绝不猜完就报错。
+  function zipBase(name) { return String(name).split('/').pop(); }
+
+  function zipGuess(entry) {
+    var base = zipBase(entry.name).toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|heic|bmp|svg|ico)$/.test(base)) return { kind: '图片', chatty: false };
+    if (/\.(mp4|mov|m4v|webm|mp3|m4a|wav|ogg|opus)$/.test(base)) return { kind: '音视频', chatty: false };
+    if (/\.(pdf|docx?|xlsx?|pptx?|pages|numbers)$/.test(base)) return { kind: '文档', chatty: false };
+    if (/\.(zip|7z|rar|gz|tar|tgz)$/.test(base)) return { kind: '压缩包', chatty: false };
+    if (/\.(json|jsonl|ndjson)$/.test(base)) return { kind: 'JSON', chatty: true };
+    if (/\.(txt|md|log|csv|tsv)$/.test(base)) return { kind: '文本', chatty: true };
+    if (!/\./.test(base)) return { kind: '无后缀', chatty: true };
+    return { kind: '其它', chatty: false };
+  }
+
+  function zipScore(entry) {
+    var base = zipBase(entry.name).toLowerCase();
+    var s = zipGuess(entry).chatty ? 30 : 0;
+    if (/(conversation|message|chat|history|export|backup|聊天|记录|导出)/.test(base)) s += 45;
+    if (/^(readme|license|licence|changelog|manifest|package|tsconfig)/.test(base)) s -= 60;
+    if (/__macosx|\.ds_store/.test(entry.name.toLowerCase())) s -= 200;
+    if (entry.size > 0) s += Math.min(8, Math.log(entry.size + 1) / 2);
+    return s;
+  }
+
+  function looksChatty(bytes) {
+    if (core.detectMagic(bytes)) return false;
+    if (!bytes.length) return false;
+    var head = decodeBytes(bytes.subarray(0, Math.min(bytes.length, 4096))).text.replace(/^\uFEFF/, '').trim();
+    if (!head) return false;
+    var c = head.charAt(0);
+    if (c === '[' || c === '{') return true;
+    if (bytes.length <= 4 * 1024 * 1024) {
+      var full = decodeBytes(bytes).text;
+      var r = core.chatTextParse(full);
+      return !!(r && r.ok && r.messages && r.messages.length >= 2);
+    }
+    return false;
+  }
+
+  // 只试前面几个最像的，别为了挑一个把整包都解一遍
+  var zipErr = null;
+  function zipPick(entries) {
+    var ranked = entries.slice().sort(function (a, b) { return zipScore(b) - zipScore(a); });
+    var i = 0, tries = 0;
+    function attempt(entry) {
+      tries++;
+      return window.ChatZip.extract(S.zip.bytes, entry).then(function (bytes) {
+        return { entry: entry, bytes: bytes };
+      });
+    }
+    function next() {
+      while (i < ranked.length && tries < 6) {
+        var e = ranked[i++];
+        if (e.size > 48 * 1024 * 1024) continue;
+        if (!zipGuess(e).chatty && zipScore(e) < 20) continue;
+        return attempt(e).then(function (hit) {
+          return looksChatty(hit.bytes) ? hit : next();
+        }).catch(function (err) { zipErr = err; return next(); });
+      }
+      return Promise.resolve(null);
+    }
+    return next();
+  }
+
+  // conversations-000.json / conversations-001.json：同一个前缀 + 纯数字后缀，按数字顺序合并
+  function zipShards(entries, hit) {
+    var m = /^(.*?)(\d+)\.json$/i.exec(hit.name);
+    if (!m || !m[1]) return [hit];
+    var prefix = m[1];
+    var group = entries.filter(function (e) {
+      return e.name.indexOf(prefix) === 0 && /^\d+\.json$/i.test(e.name.slice(prefix.length));
+    });
+    if (group.length < 2) return [hit];
+    group.sort(function (a, b) {
+      return parseInt(a.name.slice(prefix.length), 10) - parseInt(b.name.slice(prefix.length), 10);
+    });
+    return group;
+  }
+
+  function openZip(name, bytes) {
+    var info;
+    try { info = window.ChatZip.list(bytes); } catch (e) { info = { ok: false, error: e && e.message ? e.message : String(e) }; }
+    resetContent(name, bytes);
+    S.kind = 'ZIP'; S.encoding = '-'; S.format = '压缩包 ZIP';
+    if (!info.ok) { S.note = '压缩包读不出来：' + info.error; renderAll(); return; }
+
+    var files = info.entries.filter(function (e) { return !e.dir; });
+    zipErr = null;
+    S.zip = { name: name, bytes: bytes, entries: files, entryName: '', count: files.length };
+    S.format = '压缩包 ZIP · ' + files.length + ' 个文件';
+    S.note = files.length ? '正在从压缩包里挑聊天记录…' : '压缩包里没有文件。';
+    renderAll();
+    if (!files.length) return;
+
+    zipPick(files).then(function (hit) {
+      if (!hit) {
+        S.note = '没认出聊天记录' + (zipErr && zipErr.message ? '（' + zipErr.message + '）' : '') + '，从下面挑一个文件：';
+        renderAll();
+        showZipPicker();
+        return;
+      }
+      return zipLoad(zipShards(files, hit.entry));
+    }).catch(function (e) {
+      S.note = '解压失败：' + (e && e.message ? e.message : e) + '，可以从下面换一个文件试试。';
+      renderAll();
+      showZipPicker();
+    });
+  }
+
+  function zipLoad(entries) {
+    var zip = S.zip;
+    var jobs = entries.map(function (e) { return window.ChatZip.extract(zip.bytes, e); });
+    return Promise.all(jobs).then(function (list) {
+      var merged = [], allArrays = entries.length > 1;
+      if (allArrays) {
+        for (var i = 0; i < list.length; i++) {
+          var txt = decodeBytes(list[i]).text.replace(/^\uFEFF/, '').trim();
+          var obj = null;
+          try { obj = JSON.parse(txt); } catch (e) { obj = null; }
+          if (!Array.isArray(obj)) { allArrays = false; break; }
+          merged = merged.concat(obj);
+        }
+      }
+      resetContent(zip.name, zip.bytes);
+      S.zip = zip;
+      zip.entryName = entries.map(function (e) { return e.name; }).join(' + ');
+      if (allArrays && merged.length) {
+        applyJsonData(zip.name, merged, '压缩包内 ' + entries.length + ' 个分片，已按顺序合并');
+        if (S.candidates.length && S.mode === 'auto') applyCandidate(S.candidates[0]);
+        else renderAll();
+      } else {
+        ingest(list[0], true);
+        if (S.data && S.candidates.length && S.mode === 'auto') applyCandidate(S.candidates[0]);
+      }
+      renderMeta();
+    });
+  }
+
+  function showZipPicker() {
+    if (!S.zip || !S.zip.entries) return;
+    $('zipCount').textContent = S.zip.count + ' 个文件';
+    renderZipList();
+    $('zipModal').hidden = false;
+  }
+
+  function hideZipPicker() { $('zipModal').hidden = true; }
+
+  function renderZipList() {
+    var host = $('zipList');
+    host.innerHTML = '';
+    var onlyChat = $('zipOnlyChat').checked;
+    var files = S.zip.entries.slice().sort(function (a, b) { return zipScore(b) - zipScore(a); });
+    var picked = files;
+    if (onlyChat) {
+      picked = files.filter(function (f) { return zipGuess(f).chatty; });
+      if (!picked.length && files.length) {
+        picked = files;
+        host.appendChild(el('div', 'zip-empty', '没有像聊天的文件，这里列出全部'));
+      }
+    }
+    var shown = 0;
+    for (var i = 0; i < picked.length && shown < 200; i++) {
+      var g = zipGuess(picked[i]);
+      shown++;
+      var row = el('button', 'zip-row');
+      row.appendChild(el('span', 'zip-kind', g.kind));
+      row.appendChild(el('span', 'zip-name', picked[i].name));
+      row.appendChild(el('span', 'zip-size', humanSize(picked[i].size)));
+      (function (entry) {
+        row.onclick = function () {
+          hideZipPicker();
+          zipLoad([entry]).catch(function (e) { toast('解压失败：' + (e && e.message ? e.message : e)); });
+        };
+      })(picked[i]);
+      host.appendChild(row);
+    }
+    if (!shown) host.appendChild(el('div', 'zip-empty', onlyChat ? '没有像聊天的文件，去掉「只看像聊天的」再看看' : '这个压缩包是空的'));
   }
 
   // ---------- recipes ----------
@@ -190,6 +428,19 @@
       row.appendChild(el('span', 'meta-v', String(r[1])));
       box.appendChild(row);
     });
+    if (S.zip) {
+      var zrow = el('div', 'meta-row');
+      zrow.appendChild(el('span', 'meta-k', '来源'));
+      var zval = el('span', 'meta-v', S.zip.entryName || ('压缩包 · ' + S.zip.count + ' 个文件'));
+      zval.title = S.zip.entryName || '';
+      zrow.appendChild(zval);
+      box.appendChild(zrow);
+      if (S.zip.entries && S.zip.entries.length) {
+        var zb = el('button', 'ghost-btn', '换一个文件');
+        zb.onclick = showZipPicker;
+        box.appendChild(zb);
+      }
+    }
     if (S.note) box.appendChild(el('div', 'meta-note', S.note));
   }
 
@@ -713,13 +964,18 @@
     if (conv.time) head.appendChild(el('span', 'conv-time', fmtTime(conv.time)));
     host.appendChild(head);
     var list = el('div', 'msgs');
-    conv.messages.forEach(function (m) {
+    conv.messages.forEach(function (m, idx) {
       if (m.kind === 'block') {
-        if (!(S.textOpts.blockCategories[m.sig] === 'ui')) list.appendChild(blockWrap(blockCard(m), m.cat));
+        if (!(S.textOpts.blockCategories[m.sig] === 'ui')) {
+          var bw = blockWrap(blockCard(m), m.cat);
+          bw.setAttribute('data-mi', String(idx));
+          list.appendChild(bw);
+        }
         return;
       }
       if (String(m.role || '').toLowerCase() === 'system' && !$('showSys').checked) return;
       var b = el('div', 'msg ' + colorClass(m.role) + ' side-' + sideOf(m.role));
+      b.setAttribute('data-mi', String(idx));
       var h = el('div', 'msg-head');
       h.appendChild(el('span', 'who', roleName(m)));
       if (m.time) h.appendChild(el('span', 'ts', fmtTime(m.time)));
@@ -740,6 +996,121 @@
     host.scrollTop = keepTop;
     if (window.ChatScrubber) window.ChatScrubber.refresh();
   }
+
+  // ---------- 全文搜索（跨会话/跨块，点结果直接跳） ----------
+  var Q = { hits: [], at: -1, terms: [], timer: null };
+
+  function msgPlain(m) {
+    if (m.kind === 'block') return m.text || '';
+    if (m.parts && m.parts.length) {
+      var out = [];
+      m.parts.forEach(function (pt) {
+        if (pt.type === 'block') out.push(msgPlain(pt.block));
+        else if (pt.text) out.push(pt.text);
+      });
+      return out.join('\n');
+    }
+    return m.text || '';
+  }
+
+  function qTerms() {
+    return String($('q').value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  }
+
+  function qSnippet(text, term) {
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    var i = s.toLowerCase().indexOf(term);
+    if (i < 0) return trunc(s, 70);
+    var a = Math.max(0, i - 26), b = Math.min(s.length, i + term.length + 54);
+    return (a > 0 ? '…' : '') + s.slice(a, b) + (b < s.length ? '…' : '');
+  }
+
+  function runSearch() {
+    var terms = qTerms();
+    Q.terms = terms; Q.hits = []; Q.at = -1;
+    var info = $('qInfo'), hitsBox = $('qHits');
+    if (!terms.length) {
+      info.textContent = '';
+      hitsBox.hidden = true; hitsBox.innerHTML = '';
+      return;
+    }
+    var convs = S.convs || [];
+    for (var ci = 0; ci < convs.length && Q.hits.length < 200; ci++) {
+      var msgs = convs[ci].messages || [];
+      for (var mi = 0; mi < msgs.length && Q.hits.length < 200; mi++) {
+        var m = msgs[mi];
+        var text = msgPlain(m), low = text.toLowerCase(), all = true;
+        for (var t = 0; t < terms.length; t++) {
+          if (low.indexOf(terms[t]) < 0) { all = false; break; }
+        }
+        if (!all) continue;
+        Q.hits.push({
+          ci: ci, mi: mi, role: m.role, kind: m.kind,
+          who: m.kind === 'block' ? catLabel(m.cat) : roleName(m),
+          snippet: qSnippet(text, terms[0])
+        });
+      }
+    }
+    info.textContent = Q.hits.length ? Q.hits.length + (Q.hits.length >= 200 ? '+' : '') + ' 条' : '没有命中';
+    hitsBox.innerHTML = '';
+    if (!Q.hits.length) { hitsBox.hidden = true; return; }
+    var multi = convs.length > 1;
+    Q.hits.slice(0, 60).forEach(function (h, i) {
+      var row = el('button', 'q-hit');
+      row.appendChild(el('span', 'q-hit-who', (multi ? trunc(convs[h.ci].title, 12) + ' · ' : '') + h.who));
+      row.appendChild(el('span', 'q-hit-text', h.snippet));
+      row.onclick = function () { Q.at = i; jumpToHit(i); };
+      hitsBox.appendChild(row);
+    });
+    hitsBox.hidden = false;
+  }
+
+  function markTerms(root, terms) {
+    if (!root || !terms || !terms.length) return;
+    var esc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+    var re = new RegExp('(' + terms.map(esc).join('|') + ')', 'gi');
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [], n;
+    while ((n = walker.nextNode())) {
+      if (n.parentNode && n.parentNode.nodeName === 'MARK') continue;
+      if (re.test(n.nodeValue)) nodes.push(n);
+      re.lastIndex = 0;
+    }
+    nodes.forEach(function (tn) {
+      var parts = String(tn.nodeValue).split(re);
+      if (parts.length < 2) return;
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < parts.length; i++) {
+        if (!parts[i]) continue;
+        if (i % 2) frag.appendChild(el('mark', 'q-mark', parts[i]));
+        else frag.appendChild(document.createTextNode(parts[i]));
+      }
+      tn.parentNode.replaceChild(frag, tn);
+    });
+  }
+
+  function jumpToHit(i) {
+    var h = Q.hits[i];
+    if (!h) return;
+    S.activeConv = h.ci;
+    if (h.kind !== 'block' && String(h.role || '').toLowerCase() === 'system' && !$('showSys').checked) {
+      $('showSys').checked = true;   // 系统消息默认不显示，搜到了就临时打开
+    }
+    renderPreview();
+    var node = document.querySelector('#preview [data-mi="' + h.mi + '"]');
+    if (!node) { toast('这条没显示在预览里'); return; }
+    node.scrollIntoView({ block: 'center' });
+    markTerms(node, Q.terms);
+    node.classList.add('q-flash');
+    setTimeout(function () { node.classList.remove('q-flash'); }, 1500);
+  }
+
+  function stepHit(delta) {
+    if (!Q.hits.length) { runSearch(); if (!Q.hits.length) return; }
+    Q.at = (Q.at + delta + Q.hits.length) % Q.hits.length;
+    jumpToHit(Q.at);
+  }
+
 
   function renderRecipe() {
     var box = $('recipe');
@@ -1082,6 +1453,33 @@
     $('modeAuto').onclick = function () { S.mode = 'auto'; if (S.candidates.length) applyCandidate(S.candidates[0]); else renderAll(); };
     $('modeManual').onclick = function () { S.mode = 'manual'; renderAll(); };
     $('showSys').onchange = function () { renderPreview(); renderRecipe(); };
+
+    // 搜索：输入防抖，回车/↓ 逐条跳，Esc 清空，Ctrl+F 聚焦
+    $('q').oninput = function () { clearTimeout(Q.timer); Q.timer = setTimeout(runSearch, 160); };
+    $('q').onkeydown = function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); stepHit(ev.shiftKey ? -1 : 1); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); this.value = ''; runSearch(); this.blur(); }
+    };
+    $('qNext').onclick = function () { stepHit(1); };
+    $('qClear').onclick = function () { $('q').value = ''; runSearch(); $('q').focus(); };
+    document.addEventListener('keydown', function (ev) {
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'f' || ev.key === 'F')) {
+        ev.preventDefault(); $('q').focus(); $('q').select();
+      }
+    });
+    // 手机单列时预览在最下面，顶栏「搜索」负责滚过去 + 聚焦（并弹出软键盘）
+    var btnSearch = document.getElementById('btnSearch');
+    if (btnSearch) btnSearch.onclick = function () {
+      var pnl = document.querySelector('.preview-panel');
+      if (pnl) pnl.scrollIntoView({ block: 'start' });
+      var q = $('q');
+      if (q) { try { q.focus({ preventScroll: true }); } catch (e) { q.focus(); } q.select(); }
+    };
+
+    // 压缩包条目选择
+    $('zipClose').onclick = hideZipPicker;
+    $('zipOnlyChat').onchange = renderZipList;
+    $('zipModal').onclick = function (ev) { if (ev.target === $('zipModal')) hideZipPicker(); };
     $('file').onchange = function (e) {
       var f = e.target.files[0];
       if (f) readFile(f);
@@ -1102,7 +1500,7 @@
       var ap = $('alignPop');
       if (!ap.hidden && !ap.contains(ev.target) && !$('btn-align').contains(ev.target)) closeAlignPop();
     });
-    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { closePop(); closeAlignPop(); } });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { closePop(); closeAlignPop(); if ($('zipModal') && !$('zipModal').hidden) hideZipPicker(); } });
 
     Recents.load();
     renderFiles();

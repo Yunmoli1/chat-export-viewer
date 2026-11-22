@@ -228,6 +228,9 @@ data class Message(val id: String, val convId: String, val role: Role,
 
 ## 六、下一步
 
+> **现状（1.1）**：网页原型与 Android 壳已经实现了 ZIP 直读（中央目录 + inflate + ZIP64 + 分片合并）
+> 与跨会话全文搜索；流式扫描、FTS 索引、配方编辑器仍是计划。
+
 1. 收集 5–10 个真实导出样本（ChatGPT / Claude / DeepSeek / 微信 / WhatsApp / SillyTavern），
    先把**纯 Kotlin 解析器 + 命令行**跑通，验证"结构推断"命中率。
 2. 用 Compose 做列表 + 阅读器两个屏，跑一次 300MB 文件的真机压测。

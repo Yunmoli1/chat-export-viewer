@@ -6,7 +6,7 @@
 2. **能读手机上下载目录里的任意文件** —— 不依赖扩展名，`*/*` 全放行（导出文件经常是无后缀的）。
 3. **零联网** —— 清单里没有 `INTERNET` 权限，解析与展示全在本地；`allowBackup="false"`，最近文件记录也不会被云备份带走。
 
-> 这是给「先在手机上真机试一遍」用的调试版，不是商店版本：包名 `com.dsh.chatviewer`，版本 1.0（versionCode 4），minSdk 26（Android 8.0），targetSdk 34，debug 签名。
+> 这是给「先在手机上真机试一遍」用的调试版，不是商店版本：包名 `com.dsh.chatviewer`，版本 1.1（versionCode 5），minSdk 26（Android 8.0），targetSdk 34，debug 签名。
 
 ## 构建
 
@@ -19,7 +19,7 @@ npm run apk
 powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1
 ```
 
-产物：`android/build/chat-viewer-debug.apk`（约 57KB），同时拷贝一份到 `dist/chat-viewer-1.0-debug.apk` 方便直接下载。
+产物：`android/build/chat-viewer-debug.apk`（约 69KB），同时拷贝一份到 `dist/chat-viewer-1.1-debug.apk` 方便直接下载。
 
 需要 JDK 11+ 和 Android SDK（`build-tools` + `platforms/android-34` 以上）。SDK 位置按
 `ANDROID_HOME` → `ANDROID_SDK_ROOT` → `%LOCALAPPDATA%\Android\Sdk` → `C:\Android\Sdk` → `D:\Android\Sdk`
@@ -38,7 +38,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1
 
 ```powershell
 # 1) 数据线，开发者选项里打开 USB 调试
-adb install -r dist/chat-viewer-1.0-debug.apk
+adb install -r dist/chat-viewer-1.1-debug.apk
 
 # 2) 手机和电脑同一局域网时，先在手机上开「无线调试」，配对后
 adb connect <手机IP>:<端口>
@@ -59,6 +59,8 @@ adb connect <手机IP>:<端口>
 6. 右侧那条竖线是**能拖的阅读滑轨**：拖滑块、点轨道、或者聚焦后按 ↑↓ / PgUp PgDn / Home End，悬停看「42% · 第 17/86 条」。手机上整页滚时它会贴住视口右侧。
 7. 顶栏「位置 ▾」里可以改**谁在左、谁在右**：我 / AI / 系统 / 其他人，以及状态栏、内心、场景这些小块的左右；自动和手动模式共用这一套，选完自动记住。
 8. 顶栏的「位置 ▾」「文件 N ▾」展开后浮在正文之上，不会被下面的会话内容盖住（顶栏原本只有 `backdrop-filter` 自成的层叠上下文，下拉的定位基准和层级都没保障）。
+9. 导出是 **zip** 的话直接选那个 zip：会自己找里面像聊天记录的文件，分片自动合并；认不出来就列出包里的文件让你点。
+10. 顶栏搜索框能搜所有会话，点命中直接跳到那条消息并高亮；手机上单列长页，点顶栏「搜索」会直接滚到搜索框。
 
 ## 原生 ↔ 网页的接口契约
 
@@ -95,8 +97,9 @@ adb connect <手机IP>:<端口>
 
 - **单文件上限 16MB**（`MAX_BYTES`）。base64 传输 + 一次性解析，内存吃不下更大的。桌面端原型测试过 136MB 的 json，那是流式方案的活，属于 Kotlin 重写阶段。
 - 解析仍是**全量入内存**，不是文档里设计的两遍流式扫描。
-- 不支持 ZIP 内部浏览（会提示先解压）、HTML 导出、CSV。
-- 没有导出/分享图片、没有搜索、没有会话收藏。
+- zip 能直接读，但加密条目需要密码（暂不支持）、套娃压缩包只提示不解开、包内 >48MB 的条目不自动读。
+- HTML 导出、CSV、导出/分享图片、会话收藏仍未做。
+- 全文搜索是逐条子串扫描（没有 FTS 索引），16MB 上限内够快，再大就要等流式方案。
 - debug 签名，装到不同手机上互相同包名覆盖安装会失败（签名一致所以其实可以，但正式版要换 release key）。
 
 ## 文件
@@ -112,7 +115,7 @@ android/
 └─ build/chat-viewer-debug.apk  # 产物
 ```
 
-`assets/` 是构建时从 `../prototype/` 拷进去的七个文件（`index.html`、`core.js`、`textblocks.js`、`app.js`、`samples.js`、`recents.js`、`scrubber.js`），不手工维护，改网页即改 App。
+`assets/` 是构建时从 `../prototype/` 拷进去的八个文件（`index.html`、`core.js`、`textblocks.js`、`app.js`、`samples.js`、`recents.js`、`scrubber.js`、`zip.js`），不手工维护，改网页即改 App（`zipmake.js` 只给测试用，不进包）。
 
 > 改了 `build-apk.ps1` 记得存成 **UTF-8 带 BOM**：编辑工具默认写无 BOM，PowerShell 5 会按 ANSI 读，中文注释直接把脚本解析崩。
 
@@ -129,11 +132,11 @@ android/
 APK 静态检查：
 
 - `apksigner verify`：v2 + v3 通过（minSdk 26 不需要 v1）
-- `aapt2 dump badging`：`package='com.dsh.chatviewer' versionCode='4' versionName='1.0' minSdkVersion:'26' targetSdkVersion='34'`，`launchable-activity='.MainActivity'`，图标 `res/drawable/icon.png`
+- `aapt2 dump badging`：`package='com.dsh.chatviewer' versionCode='5' versionName='1.1' minSdkVersion:'26' targetSdkVersion='34'`，`launchable-activity='.MainActivity'`，图标 `res/drawable/icon.png`
 - `dexdump`：`MainActivity`、`Bridge.pickFile/readUri/version/caps`、`deliver/post/readAndDeliver` 全在 dex 里
-- assets 七个文件与 `prototype/` 源文件的 SHA-256 逐一比对一致
+- assets 八个文件与 `prototype/` 源文件的 SHA-256 逐一比对一致
 - 清单里 `allowBackup=false`（`aapt2 dump xmltree` 复核）
-- 1.0 的 APK：58,252 B，SHA-256 `02B7CEFB721D0BD0EFFA15BA4CE7CCC4E9984DDA4F4269CC8899B472373F838B`
+- 1.1 的 APK：70,599 B，SHA-256 `219894DFAD5632042A1EFD94D0DE8A609EC22479212BBFE5A00D302AA5B5E31F`
 
 **没有**覆盖到的：真机上的 SAF 授权弹窗、系统 WebView 版本差异、Android 14 的分区存储细节 —— 这些只能等你在手机上装一次。
 
@@ -142,4 +145,4 @@ APK 静态检查：
 - 用 Kotlin 重写引擎，两遍流式扫描 + 分段落盘，去掉 16MB 上限。
 - 首页改成「最近文件」列表页（现在是网页里的下拉面板）。
 - 配方管理：导入/导出 JSON、按扩展名 + 指纹自动套用、出错时引导点选。
-- 全文搜索（FTS5）、导出图片/PDF、长按复制单条消息。
+- 全文搜索加 FTS5 索引（现在是子串扫描）、导出图片/PDF、长按复制单条消息。

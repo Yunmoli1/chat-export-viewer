@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>聊天导出查看器 · 双模式原型</title>
+<title>聊天导出查看器 · 网页原型</title>
 <style>
 :root{
   --bg:#0a0d13; --panel:#111725; --panel-2:#0d131e; --line:#222b3d;
@@ -52,7 +52,7 @@ main{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:320px 390p
 .meta-row{display:flex; gap:10px; font-size:12.5px}
 .meta-k{color:var(--muted); width:44px; flex:0 0 auto}
 .meta-v{color:#d8e4f4; word-break:break-all}
-.meta-note{margin-top:2px; padding:8px 10px; background:#1a2234; border:1px solid #2a3category; border-radius:9px; color:#b9c8dd; font-size:12px; line-height:1.55}
+.meta-note{margin-top:2px; padding:8px 10px; background:#1a2234; border:1px solid #2a3a52; border-radius:9px; color:#b9c8dd; font-size:12px; line-height:1.55}
 .tree{overflow:auto; padding:6px 8px 12px; font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
 details.tnode{margin:1px 0}
 details.tnode>summary{cursor:pointer; list-style:none; padding:1px 4px; border-radius:6px; display:flex; gap:7px; align-items:baseline; white-space:nowrap}
@@ -188,6 +188,42 @@ details.tnode:not([open])>summary::before{content:'▸'}
 .ghost-btn{background:#132033;border:1px solid #2a3a52;color:#cfe0f7;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;margin-top:8px}
 .ghost-btn:hover{background:#182a42}
 
+/* ---------- 全文搜索 ---------- */
+/* 手机上是单列长页，预览在最下面：顶栏给一个「搜索」直接跳过去并聚焦 */
+#btnSearch{display:none}
+.findbar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #1b2334;flex:0 0 auto}
+.findbar input{flex:1 1 auto;min-width:0;background:#0b111c;border:1px solid #243149;color:#d6e3f5;border-radius:8px;padding:6px 9px;font-size:12.5px;outline:none}
+.findbar input:focus{border-color:#3f74e6}
+.findbar input::-webkit-search-cancel-button{display:none}
+.q-info{font-size:11px;color:#7f90a8;white-space:nowrap}
+.q-btn{background:#16233a;border:1px solid #2b3d5c;color:#b8cdea;border-radius:8px;padding:4px 9px;font-size:12px;cursor:pointer;line-height:1.4}
+.q-btn:hover{border-color:#3f74e6;color:#e2eeff}
+.q-hits{position:absolute;left:12px;right:20px;top:8px;z-index:30;max-height:60%;overflow:auto;
+  background:#0e1626;border:1px solid #2b3b57;border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.6);padding:6px}
+.q-hits[hidden]{display:none}
+.q-hit{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-radius:9px;padding:7px 9px;cursor:pointer}
+.q-hit:hover{background:#152036}
+.q-hit-who{font-size:10.5px;color:#8fb4f5}
+.q-hit-text{font-size:12px;color:#c7d7ec;line-height:1.5;word-break:break-word}
+mark.q-mark{background:#4a3a12;color:#ffe08a;border-radius:3px;padding:0 1px}
+.q-flash .msg-body,.q-flash .blk{outline:2px solid #f0b429;outline-offset:2px}
+
+/* ---------- 压缩包条目 ---------- */
+.modal{position:fixed;inset:0;z-index:90;background:rgba(4,8,15,.6);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal[hidden]{display:none}
+.modal-card{width:min(560px,100%);max-height:80vh;display:flex;flex-direction:column;background:#0e1626;border:1px solid #2b3b57;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
+.modal-head{padding:12px 14px;border-bottom:1px solid #1b2334;font-size:13px;font-weight:650;color:#dce9ff;display:flex;align-items:baseline;gap:8px}
+.modal-sub{margin-left:auto;font-size:11px;color:#7f8fa8;font-weight:400}
+.zip-list{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
+.zip-row{display:flex;align-items:center;gap:9px;background:transparent;border:0;border-radius:9px;padding:8px 9px;cursor:pointer;text-align:left;width:100%}
+.zip-row:hover{background:#152036}
+.zip-kind{flex:0 0 auto;font-size:10px;padding:1px 7px;border-radius:999px;background:#1c2b45;border:1px solid #2f4a72;color:#a9c6f0}
+.zip-name{flex:1 1 auto;min-width:0;font-size:12.5px;color:#dce9ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zip-size{flex:0 0 auto;font-size:11px;color:#6f8099}
+.zip-empty{padding:16px;color:#65748c;font-size:12.5px;text-align:center}
+.modal-foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #1b2334}
+.zip-filter{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8b98ac}
+.modal-foot button{margin-left:auto}
 
 /* ---------- 文件切换（顶栏下拉） ---------- */
 .ghost{background:#16233a;border:1px solid #2b3d5c;color:#b8cdea;padding:7px 13px;border-radius:10px;
@@ -242,6 +278,7 @@ details.tnode:not([open])>summary::before{content:'▸'}
   .logo{width:32px;height:32px;border-radius:10px;font-size:12px}
   h1{font-size:14px} h1 span{display:none} .brand p{display:none}
   .tools{margin-left:0; width:100%; justify-content:flex-start; gap:8px}
+  #btnSearch{display:inline-block}
   .seg button{padding:6px 11px; font-size:12.5px}
   button.primary{padding:7px 13px; font-size:12.5px}
   main{grid-template-columns:1fr; padding:10px; gap:10px; height:auto}
@@ -260,7 +297,7 @@ details.tnode:not([open])>summary::before{content:'▸'}
   <div class="brand">
     <div class="logo">CV</div>
     <div>
-      <h1>聊天导出查看器 <span>原型 v0.1</span></h1>
+      <h1>聊天导出查看器 <span>1.1</span></h1>
       <p>忽略 JSON 噪音，把对话挑出来：自动识别 / 手动映射</p>
     </div>
   </div>
@@ -274,6 +311,7 @@ details.tnode:not([open])>summary::before{content:'▸'}
       <button id="btn-files" class="ghost" aria-haspopup="true" aria-expanded="false">文件 <span id="filesN" class="files-n"></span> ▾</button>
       <div id="filesPop" class="pop" hidden></div>
     </div>
+    <button id="btnSearch" class="ghost" title="搜索全部会话">搜索</button>
     <button class="primary" id="btn-open">打开文件</button>
     <input type="file" id="file" hidden>
   </div>
@@ -291,7 +329,14 @@ details.tnode:not([open])>summary::before{content:'▸'}
     <section class="panel grow preview-panel">
       <div class="panel-head">预览<label class="sysToggle"><input type="checkbox" id="showSys"> 显示系统消息</label></div>
       <div id="stats" class="stats"></div>
+      <div class="findbar">
+        <input id="q" type="search" placeholder="搜索全部会话…（Ctrl+F）" autocomplete="off">
+        <span id="qInfo" class="q-info"></span>
+        <button id="qNext" class="q-btn" title="下一个（回车）">↓</button>
+        <button id="qClear" class="q-btn" title="清空（Esc）">×</button>
+      </div>
       <div class="preview-shell">
+        <div id="qHits" class="q-hits" hidden></div>
         <div id="preview" class="preview"></div>
         <div id="rail" class="rail" tabindex="0" role="slider" aria-orientation="vertical"
              aria-label="阅读进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -308,10 +353,21 @@ details.tnode:not([open])>summary::before{content:'▸'}
     </details>
   </section>
 </main>
+<div id="zipModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">压缩包里的文件<span id="zipCount" class="modal-sub"></span></div>
+    <div id="zipList" class="zip-list"></div>
+    <div class="modal-foot">
+      <label class="zip-filter"><input type="checkbox" id="zipOnlyChat" checked> 只看像聊天的</label>
+      <button id="zipClose" class="ghost">关闭</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script src="recents.js"></script>
 <script src="scrubber.js"></script>
 <script src="core.js"></script>
+<script src="zip.js"></script>
 <script src="textblocks.js"></script>
 <script src="samples.js"></script>
 <script src="app.js"></script>

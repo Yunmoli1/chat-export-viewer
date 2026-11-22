@@ -14,9 +14,9 @@
 
 Android 8.0 以上，直接装：
 
-**[dist/chat-viewer-1.0-debug.apk](dist/chat-viewer-1.0-debug.apk)**
+**[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
 
-- 包名 `com.dsh.chatviewer`，debug 签名，仅 57 KB 左右。
+- 版本 1.1，包名 `com.dsh.chatviewer`，debug 签名，约 69 KB。
 - **清单里没有 `INTERNET` 权限** —— 装完可以在系统设置里核对：它没有联网能力。
 - 也关掉了 `allowBackup`，最近文件记录不会被系统云备份带走。
 - 第一次安装需要允许「安装未知来源应用」。
@@ -32,7 +32,7 @@ Android 8.0 以上，直接装：
 
 | 层 | 做的事 |
 | --- | --- |
-| 字节层 | 魔数嗅探：ZIP / PNG / JPEG / PDF / GZIP / SQLite 直接拦下并说明「这是压缩包，先解开」 |
+| 字节层 | 魔数嗅探：ZIP 直接打开浏览（stored / deflate / ZIP64 / GBK 文件名）；PNG / JPEG / PDF / GZIP / SQLite 拦下并说明；其余含 NUL 的文件按二进制处理 |
 | 编码层 | UTF-8 → UTF-16 BOM → GB18030 依次回退，中文导出不乱码 |
 | 结构层 | JSON、JSONL、聊天 txt（WhatsApp / 微信 / 方括号时间 / `名字:`），按打分选最像的 |
 | 语义层 | 找「≥60% 成员是对象，且同时有角色字段和正文字段」的集合，命中就是消息列表 |
@@ -82,6 +82,34 @@ ChatGPT 的 `mapping` 是一张有向图，不是列表 —— 直接遍历会�
 
 文件被删了、权限被回收了，会先用缓存顶上并提示，不会静悄悄失败。
 
+### 7. 压缩包直接看，不用先解压
+
+ChatGPT 的导出常常是一个 zip，里面 `conversations.json`、附件目录、README 混在一起。
+现在直接把 zip 拖进来（手机上直接选）就行：
+
+- 自己读中央目录，不依赖 `DecompressionStream`（老 WebView 也有纯 JS inflate 兜底），
+  支持 stored / deflate、ZIP64、GBK 文件名。
+- 自动猜哪个文件像聊天记录：按名字（conversation / message / chat / 聊天 / 记录）、内容
+  （开头是 `[` `{`）、体积打分，最多试 6 个，跳过 48MB 以上的附件。
+- 分片导出（`conversations-000.json`、`-001` …）自动按序号合并。
+- 猜不出来就把包里的文件列出来，带「只看像聊天的」过滤，点哪行读哪个；加密条目会说明需要密码。
+
+| 桌面 | 手机 |
+| --- | --- |
+| ![压缩包](docs/screenshots/zip-browse.png) | ![压缩包（手机）](docs/screenshots/zip-mobile.png) |
+
+### 8. 全文搜索
+
+顶栏搜索框（Ctrl / Cmd + F）搜所有会话：命中列表带「会话名 · 那一条的摘录」，点一条直接跳到
+对应消息并高亮闪一下；Enter / ↑ 在命中之间绕圈，Shift+Enter 反向，Esc 清空。多词是 AND。
+
+手机上单列长页，预览在最下面，所以窄屏顶栏会多出一个「搜索」按钮：点它直接滚到预览并聚焦输入框，
+不用自己一路滑下去找。
+
+![全文搜索](docs/screenshots/search.png)
+
+搜索是逐条子串扫描、不建索引 —— 16MB 以内即时，更大的文件等流式方案。
+
 ## 识别不准怎么办：手动映射
 
 自动识别只是**猜**，猜错了就切「手动」：左栏列出识别到的每个结构签名（×次数 + 首行样本），
@@ -96,6 +124,7 @@ ChatGPT 的 `mapping` 是一张有向图，不是列表 —— 直接遍历会�
 .
 ├─ prototype/          网页原型：解析引擎 + 界面 + 验证脚本（这是主体）
 │  ├─ core.js          JSON 侧识别与装配（无 DOM，Node 可直接 require）
+│  ├─ zip.js           ZIP 读取器（中央目录 / inflate / ZIP64 / GBK 文件名）
 │  ├─ textblocks.js    文本 / 半 HTML 的块解析（无 DOM，UMD）
 │  ├─ app.js           渲染与交互
 │  ├─ scrubber.js      阅读滑轨
@@ -103,8 +132,10 @@ ChatGPT 的 `mapping` 是一张有向图，不是列表 —— 直接遍历会�
 │  ├─ serve.js         本地静态服务器（npm run serve）
 │  ├─ test.js          36 条纯逻辑断言
 │  ├─ test-text.js     38 条块解析断言
+│  ├─ test-zip.js      12 条 ZIP 断言（含 ZIP64 / GBK / 加密 / 截断）
+│  ├─ zipmake.js       测试用造包器（不进 APK）
 │  ├─ harness.js       验证用的 CDP 脚手架（自己拉起 headless 浏览器）
-│  └─ verify-*.js      端到端验证：UI / 文本 / 文件 / 窄屏 / 左右 / 滑轨 / 弹层 / 原生桥
+│  └─ verify-*.js      端到端验证：UI / 文本 / 文件 / 窄屏 / 左右 / 滑轨 / 弹层 / 原生桥 / 压缩包 / 搜索
 ├─ android/            把上面这套装进 WebView 的壳，一条命令出 APK
 ├─ sniffer/            Java 版的字节嗅探原型（识别逻辑的实验田，不参与打包）
 ├─ docs/               设计文档与截图
@@ -116,9 +147,9 @@ ChatGPT 的 `mapping` 是一张有向图，不是列表 —— 直接遍历会�
 只需要 Node 22+（`fetch` / `WebSocket` 是全局的，没有依赖，不用装包）。
 
 ```bash
-npm test          # 纯逻辑断言（74 条）
+npm test          # 纯逻辑断言（86 条）
 npm run serve     # http://127.0.0.1:8765 打开原型
-npm run verify    # 端到端：自动拉起 headless Edge/Chrome 跑 8 组检查并截图
+npm run verify    # 端到端：自动拉起 headless Edge/Chrome 跑 10 组检查并截图
 npm run apk       # 构建 APK（需要 Android SDK，见下）
 ```
 
@@ -152,7 +183,8 @@ npm run apk
 
 - **网页版是全量解析**，大文件（>100 MB）会卡；Android 版单文件上限 16 MB（base64 过桥 + 一次性入内存）。
   设计里写好的两遍流式扫描 + 分段落盘还没实现，见 [docs/design-architecture.md](docs/design-architecture.md)。
-- 不支持 ZIP 内部浏览（会提示先解压）、PDF / 图片导出、CSV。
+- ZIP 只读不写：加密条目需要密码（暂不支持），套娃压缩包只提示不解开，包里 >48MB 的条目不会被自动读。
+- 没有 PDF / 图片导出、CSV；全文搜索是子串扫描，没有索引。
 - HTML 导出只按标签 + class 名做启发式解析，没有真正的 DOM 解析，复杂模板可能分错块。
 - 只做过 Windows 上的构建与验证；macOS / Linux 上应该能跑（脚本是 Node 的），但没实测。
 - debug 签名，不是商店版本；包名、图标、文案都是最小的可用状态。

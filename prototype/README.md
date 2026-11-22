@@ -23,7 +23,7 @@
 
 ## 已实现
 
-- **文件层**：魔数嗅探（ZIP/PNG/JPEG/PDF/GZIP/SQLite 直接拦下并解释）、UTF-8 / UTF-16 BOM / GB18030 解码回退、JSON、JSONL、聊天 txt。
+- **文件层**：魔数嗅探（ZIP 直接打开浏览，PNG/JPEG/PDF/GZIP/SQLite 拦下并解释，含 NUL 的按二进制处理）、UTF-8 / UTF-16 BOM / GB18030 解码回退、JSON、JSONL、聊天 txt。
 - **识别层（自动）**：DFS 找「≥60% 的成员是对象，且同时有角色字段和正文字段」的集合，按 priority 表打分选字段，产出候选（会话路径 / 消息路径 / 排序方式）。ChatGPT 的 `mapping`（dict）也能识别。
 - **树形还原**：有 leaf + parent 时从 current_node 回溯到根再 reverse，旁支计为「已丢弃 N 条」。
 - **聊天 txt**：5 条行规则（WhatsApp iOS/Android、微信时间开头、方括号时间、`名字:`），命中最多者胜出；不匹配的行并入上一条（续行）。
@@ -36,6 +36,29 @@
   - 块分类：双语词表把签名分到 状态栏 / 内心 / 摘要 / 系统 / OOC / 选项 / 场景 / 装饰 / 折叠块；`<details><summary>` 的 summary 文本参与分类，且不会重复成子块。
   - 行规则：`名字: 内容`、`名字 — 内容`、`[时间] 名字: 内容`，外加 `【状态】…` / `[状态]…` / `（旁白）…` 伪标签（延续到空行或下一条行规则）。
   - 手动模式：左栏列出识别到的每个块签名（×次数 + 首行样本 + 下拉类别），改类别立刻重排；`忽略不显示` 直接丢弃；块位置可选「跟随所属消息」或「独立插在对话间」。
+
+## 压缩包直读（zip / 分片导出）
+
+把 zip 拖进来就能直接用，不需要先解压、不需要外部库：
+
+- **自己解析中央目录**：EOCD 反向扫描 → 中央目录项 → 本地文件头，支持 stored(0) / deflate(8)、
+  ZIP64（`0x06064b50` / `0x07064b50`，大包与超 4GB 偏移）、UTF-8 flag（`0x0800`）与 GBK 文件名回退。
+- **解压**：优先 `DecompressionStream('deflate-raw')`，不可用或失败时退回纯 JS inflate（约 3KB），
+  老 WebView 也能开。
+- **猜文件**：按名字（conversation / message / chat / history / 导出 / 记录）、内容（4KB 内开头是 `[` `{`，
+  否则尝试按聊天 txt 解析 ≥2 条）、体积打分；`__MACOSX`、readme、manifest 之类减分；最多试 6 个、跳过 >48MB。
+- **分片合并**：`conversations-000.json`、`-001`… 按数字序合并后再识别（ChatGPT 大导出就是这么切的）。
+- **兜底 UI**：认不出来就列出包内文件（最多 200 行），带「只看像聊天的」过滤；点哪行读哪个。
+  条目加密、套娃压缩包、解压失败都有各自的提示，不会静默失败。
+
+## 全文搜索
+
+顶栏搜索框，或 Ctrl / Cmd + F 聚焦：
+
+- 搜所有会话的正文（多条消息拼成纯文本后匹配），命中上限 200 条，列表显示前 60 条。
+- 每条命中带「会话名 · 摘录」，点一下切到那个会话、滚到那条消息、加 `mark.q-mark` 高亮并闪一下。
+- Enter / ↓ 下一条、Shift+Enter / ↑ 上一条（到末尾绕回），Esc 清空；多词按 AND 处理；输入 160ms 防抖。
+- 手机单列时预览在最下面，顶栏会多出「搜索」按钮（`#btnSearch`，只在 ≤760px 显示）：点了先滚到预览面板再聚焦输入框。
 
 ## 左右位置：角色和文本块都能自定义
 
@@ -106,7 +129,7 @@
 - 点选式绑定（在左栏结构树上点节点自动填路径），现在只有下拉。
 - 配方的保存 / 复用 / 分享，以及「手动配方回流自动识别」的优先级合并。
 - 大文件流式（浏览器里仍是全量解析，所以别拿 300MB 的试）。
-- ZIP 内部入口选择（现在只提示先解压）、HTML 导出解析、CSV。
+- HTML 导出解析、CSV、PDF / 图片导出；搜索没有索引（大文件慢）。
 - 文本侧：真正的 HTML 解析（现在只认标签 + class 名）、`<style>/<script>` 内容剔除（已在扫描时跳过，但 `<style>` 里的 CSS 文本仍可能漏进正文，待样本验证）、块级配方的保存与跨文件复用。
 
 ## 验证
@@ -114,6 +137,7 @@
 ```bash
 node test.js        # core.js 纯逻辑：36 条断言
 node test-text.js   # textblocks.js 块解析：38 条断言
+node test-zip.js    # zip.js：12 条（stored/deflate/ZIP64/GBK/加密/截断/JS inflate 兜底）
 
 # 下面这些是端到端验证：每个脚本自带 `harness.js`，会自己拉起一台 headless Edge/Chrome、
 # 开一个临时用户目录、跑完关掉。不需要事先开调试端口，也不需要手动清理进程。
@@ -126,10 +150,12 @@ node verify-scrub.js   # 滑轨：真鼠标拖动 / 点轨道 / 键盘 / 提示�
 node verify-pops.js    # 顶栏下拉不被正文盖住（elementFromPoint 探针 + 把 header 改回 static 的反证）
 node verify-native.js  # 注入 window.Native 桩，模拟 APK 里的路径：选文件 → 回调加载 /
                        # 冷启动按 URI 重开 / 重开失败回退缓存 / 分片传输
+node verify-zip.js     # 压缩包：自动挑 conversations.json / 分片合并 / 认不出时列文件 / 加密条目
+node verify-search.js  # 全文搜索：跨会话命中、点击跳转高亮、环绕、多词 AND、空结果、Ctrl+F、手机窄屏
 ```
 
 找不到浏览器时设环境变量 `CV_BROWSER` 指向 Edge / Chrome 的可执行文件；`browser.js` 里列了
-Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑完八组。
+Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑完十组。
 
 `test.js` 覆盖：ChatGPT 树形顺序（a1,a2,a3,a5，丢弃 2 条旁支）、Claude、SillyTavern 布尔 is_user、WhatsApp 续行合并、路径引擎 5 项。
 `test-text.js` 覆盖：`div.mes` 容器（只剩最外层）、名字 / 正文 / 时间抽取、`details` 归内心且 summary 不重复、`div.stat` 归状态栏、内联块 parts 顺序、中文伪标签四种类别、手动改类别（含容器内块）、关闭容器、`attach=standalone`、畸形标签容错、纯文本不崩。
@@ -139,6 +165,10 @@ Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑�
 `verify-align.js` 实测（1600×1000）：酒馆样本「我」的 x 偏移 0（贴左）、AI 距右 0（贴右）；弹层里把「我」改成右、「AI」改成左后 4 条消息全部对调；点「恢复默认」回到左/右且 localStorage 同步；手动模式读到同一套设置；ChatGPT 样本同样左右交替；无横向溢出、无页面错误。
 `verify-scrub.js` 实测：滑轨 `thumbH=288 / railH=374`，真鼠标拖到底 `scrollTop` 139（= 最大滚动量）、`aria-valuenow=100`、提示「100% · 第 2/4 条」；点轨道底部跳到底；键盘 End / Home 到头尾；角色「我」改右后气泡 x 775 → 1038、类名 `msg me side-right`；状态栏块改右后 `blk-wrap side-right`；独立插在对话间的块（`attach=standalone`，直接挂在 `.msgs` 下）改右后 x 从 0 变 186 / 215 / 210；刷新后设置仍在（x=1038、块 2 个靠右）；412×915 下 `rail.fixed=true`、拖动后 `window.scrollY=411`。
 
+`verify-zip.js` 实测：`chatgpt.zip`（readme + conversations.json + 一张图）自动打开 1 会话 2 条、来源显示 `conversations.json`；`shards.zip` 把 000 / 001 两片合并成 2 会话 4 条；`media.zip`（图片 + m4a）弹出条目列表，选中 m4a 给「这是二进制文件」而不是瞎解析；`locked.zip` 的加密条目说明需要密码并留在列表态。
+
+`verify-search.js` 实测：三个会话里搜「关东煮」得 3 条且首条属于早餐会话，点第 3 条切到夜宵、正文出现 1 个 `mark.q-mark` 与一次 `q-flash`；Enter 从末条绕回早餐；「关东煮 不错」是 1 条（AND）；无结果时提示「没有命中」并收起浮层；Ctrl+F 聚焦搜索框、Esc 清空。412×915 下 `scrollWidth=412` 无横向溢出，命中浮层 `x=23 / w=358` 在视口内。
+
 `verify-pops.js` 实测：顶栏的「位置」「文件」弹层用 `elementFromPoint` 在内部取三点探测，桌面 1280×800 与手机 412×915 全部命中弹层自身（`bad: []`），手机端弹层 `x=10 / w=392` 不溢出；反证：把顶栏改回 `position:static`（修复前的写法）后，探测点立刻命中 `.msgs` 和 `.msg`，即正文确实会盖住下拉——说明这个测试不是空跑。
 
 > 实现要点：顶栏原本只有 `backdrop-filter` 自成的层叠上下文，下拉又是 `position:absolute`，定位基准不确定、层级也不占优，于是被正文盖住。现在 `header{position:relative; z-index:50}` 同时解决「弹层挂哪儿」和「弹层盖谁」；手机整页滚时固定的滑轨降到 `z-index:40`，仍高于正文但不会压在弹层上；toast 抬到 80。
@@ -146,6 +176,8 @@ Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑�
 ## 文件
 
 - `core.js` —— JSON 侧识别与装配（无 DOM）
+- `zip.js` —— ZIP 读取器（中央目录 / inflate / ZIP64 / GBK / 加密检测）
+- `zipmake.js` —— 造 zip 的测试工具（stored、deflate、ZIP64、加密标记、截断），不进 APK
 - `scrubber.js` —— 阅读滑轨（拖动 / 点击 / 键盘 / 两种滚动模式）
 - `harness.js` —— 验证脚手架：拉起 headless 浏览器 + CDP 客户端 + 截图（`launch()`）
 - `browser.js` —— 找 Edge / Chrome（`CV_BROWSER` 优先，其次各平台常见路径）
@@ -156,10 +188,11 @@ Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑�
 - `app.js` —— DOM 渲染与交互
 - `index.html` —— 结构与内联样式
 - `samples.js` —— 由 `build-samples.js` 从 `../sniffer/fixtures` 与 `fixtures-text` 生成
-- `test.js` / `test-text.js` / `verify-ui.js` / `verify-page.js` / `verify-text.js` / `verify-align.js` / `verify-scrub.js` / `verify-pops.js` / `verify-files.js` / `verify-mobile.js` / `verify-native.js` —— 验证
+- `test.js` / `test-text.js` / `test-zip.js` / `verify-ui.js` / `verify-page.js` / `verify-text.js` / `verify-align.js` / `verify-scrub.js` / `verify-pops.js` / `verify-files.js` / `verify-mobile.js` / `verify-native.js` / `verify-zip.js` / `verify-search.js` —— 验证
 - `fixtures-text/` —— 文本样本（`tavern_div.txt` 酒馆 div 导出、`cn_tags_dialogue.txt` 中文伪标签）
 - `shot-text-tavern.png` / `shot-text-cn.png` / `shot-text-manual.png` —— 文本模式截图
 - `shot-mobile-files.png` / `shot-mobile-full.png` / `shot-native-flow.png` —— 窄屏与原生流程截图
 - `shot-scrub.png` / `shot-scrub-mobile.png` —— 滑轨（桌面 / 手机）
 - `shot-align-blocks.png` / `shot-align-stdiv.png` / `shot-align-swapped.png` / `shot-align-manual.png` / `shot-align-json.png` —— 左右位置截图
+- `shot-zip.png` / `shot-zip-mobile.png` / `shot-search.png` / `shot-search-mobile.png` —— 压缩包与全文搜索截图
 - 打包装 APK：见 `../android/README.md`

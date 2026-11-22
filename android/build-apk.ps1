@@ -44,7 +44,7 @@ New-Item -ItemType Directory -Force -Path $stage,(Join-Path $stage 'assets'),(Jo
 Copy-Item (Join-Path $proj 'AndroidManifest.xml') $stage -Force
 CopyTree (Join-Path $proj 'src') (Join-Path $stage 'src')
 CopyTree (Join-Path $proj 'res') (Join-Path $stage 'res')
-$files = 'index.html','core.js','textblocks.js','app.js','samples.js','recents.js','scrubber.js'
+$files = 'index.html','core.js','textblocks.js','app.js','samples.js','recents.js','scrubber.js','zip.js'
 foreach ($f in $files) {
   $src = Join-Path $proto $f
   if (-not (Test-Path $src)) { throw "缺少 $src" }
@@ -65,7 +65,7 @@ RunExe (Join-Path $bt 'aapt2.exe') @(
   '--manifest',(Join-Path $stage 'AndroidManifest.xml'),
   '-A',(Join-Path $stage 'assets'),
   '--min-sdk-version','26','--target-sdk-version','34',
-  '--version-code','4','--version-name','1.0',
+  '--version-code','5','--version-name','1.1',
   '--auto-add-overlay'
 )
 
@@ -122,7 +122,7 @@ Copy-Item $signedApk $final -Force
 # 再放一份到仓库根的 dist/，方便直接从仓库下载安装
 $distDir = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-$dist = Join-Path $distDir 'chat-viewer-1.0-debug.apk'
+$dist = Join-Path $distDir 'chat-viewer-1.1-debug.apk'
 Copy-Item $signedApk $dist -Force
 & (Join-Path $bt 'apksigner.bat') 'verify' '--verbose' '--print-certs' $final
 & (Join-Path $bt 'aapt2.exe') 'dump' 'badging' $final
