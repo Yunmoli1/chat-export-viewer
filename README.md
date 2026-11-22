@@ -16,7 +16,7 @@ Android 8.0 以上，直接装：
 
 **[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
 
-- 版本 1.1，包名 `com.dsh.chatviewer`，debug 签名，约 69 KB。
+- 版本 1.1，包名 `com.dsh.chatviewer`，自签名，约 69 KB。
 - **清单里没有 `INTERNET` 权限** —— 装完可以在系统设置里核对：它没有联网能力。
 - 也关掉了 `allowBackup`，最近文件记录不会被系统云备份带走。
 - 第一次安装需要允许「安装未知来源应用」。
@@ -147,6 +147,7 @@ ChatGPT 的导出常常是一个 zip，里面 `conversations.json`、附件目�
 只需要 Node 22+（`fetch` / `WebSocket` 是全局的，没有依赖，不用装包）。
 
 ```bash
+npm run lint      # 仓库约定：脚本 BOM、无 INTERNET 权限、三处版本号一致
 npm test          # 纯逻辑断言（86 条）
 npm run serve     # http://127.0.0.1:8765 打开原型
 npm run verify    # 端到端：自动拉起 headless Edge/Chrome 跑 10 组检查并截图
@@ -172,6 +173,10 @@ npm run apk
 产物 `android/build/chat-viewer-debug.apk`，并复制一份到 `dist/`。脚本末尾自动跑
 `apksigner verify` 和 `aapt2 dump badging` 自检。
 
+签名密钥放在 `android/keystore/`（`.gitignore` 挡住，不进仓库；第一次构建自动生成，之后一直复用）。
+要换成自己的正式密钥或换个 apksigner，用 `CV_KEYSTORE` / `CV_KEYSTORE_PASS` / `CV_KEY_ALIAS` / `CV_APKSIGNER` 覆盖，
+详见 [android/README.md](android/README.md#签名)。
+
 两个 Windows 上的坑（脚本里已经绕开，改脚本时别踩回去）：
 
 - `aapt2` 在**非 ASCII 路径**下会报 `系统找不到指定的文件 (2)`（`-A` 目录枚举失败，与文件是否存在无关）。
@@ -187,7 +192,7 @@ npm run apk
 - 没有 PDF / 图片导出、CSV；全文搜索是子串扫描，没有索引。
 - HTML 导出只按标签 + class 名做启发式解析，没有真正的 DOM 解析，复杂模板可能分错块。
 - 只做过 Windows 上的构建与验证；macOS / Linux 上应该能跑（脚本是 Node 的），但没实测。
-- debug 签名，不是商店版本；包名、图标、文案都是最小的可用状态。
+- 自签名（密钥在本地，不进仓库），不是商店版本；包名、图标、文案都是最小的可用状态。
 
 ## 设计文档
 

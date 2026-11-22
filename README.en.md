@@ -14,7 +14,7 @@ folding things like `<div class="status">` or `【status】` into collapsible bl
 ## Install
 
 Android 8.0+, sideload this: **[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
-(1.1, debug-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
+(1.1, self-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
 and `allowBackup` is off, so the recent-files list never leaves the device via cloud backup.
 
 No app needed either — open `prototype/index.html` in a browser (`file://` works, no server).
@@ -62,6 +62,7 @@ dist/        packaged APK
 Node 22+ only — no dependencies, `fetch` and `WebSocket` are global.
 
 ```bash
+npm run lint      # repo conventions: BOM, no INTERNET permission, versions agree
 npm test          # 86 logic assertions
 npm run serve     # http://127.0.0.1:8765
 npm run verify    # 10 end-to-end checks in headless Edge/Chrome (auto-launched, auto-cleaned)
@@ -73,6 +74,10 @@ npm run apk       # build the APK (needs an Android SDK + JDK 11+)
 
 GitHub Actions runs `npm test` plus a check that `samples.js` is a deterministic build artefact.
 
+The signing key lives in `android/keystore/` (`.gitignore`d, generated on the first build, reused afterwards).
+Override with `CV_KEYSTORE` / `CV_KEYSTORE_PASS` / `CV_KEY_ALIAS`, or point `CV_APKSIGNER` at another
+apksigner binary — see [android/README.md](android/README.md#签名).
+
 ## Limitations
 
 - The web version parses everything in memory; the Android shell caps a single file at 16 MB.
@@ -81,7 +86,7 @@ GitHub Actions runs `npm test` plus a check that `samples.js` is a deterministic
   entries over 48 MB are not auto-read. No PDF/image export, no CSV. Search is a substring scan.
 - HTML exports are parsed heuristically by tags and class names, not a real DOM.
 - Built and verified on Windows only; scripts are Node so macOS/Linux should work but are untested.
-- Debug signing, not a store release.
+- Self-signed; the key lives in `android/keystore/` and is not committed. Not a store release.
 
 ## Docs
 

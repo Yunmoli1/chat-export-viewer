@@ -9,6 +9,7 @@
   },
   "scripts": {
     "serve": "node prototype/serve.js",
+    "lint": "node prototype/check-repo.js",
     "test": "node prototype/test.js && node prototype/test-text.js && node prototype/test-zip.js",
     "samples": "node prototype/build-samples.js",
     "verify": "node prototype/verify-ui.js && node prototype/verify-text.js && node prototype/verify-files.js && node prototype/verify-mobile.js && node prototype/verify-align.js && node prototype/verify-scrub.js && node prototype/verify-pops.js && node prototype/verify-native.js && node prototype/verify-zip.js && node prototype/verify-search.js",

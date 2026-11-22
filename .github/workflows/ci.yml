@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # 仓库约定：build-apk.ps1 的 BOM、零联网权限、三处版本号一致
+      - run: npm run lint
       # 纯 Node 断言，无第三方依赖，不需要 npm install
       - run: npm test
       # samples.js 是确定性产物，重跑应无差异

@@ -11,7 +11,11 @@ android/assets/
 # 验证脚本跑出来的截图、临时浏览器配置、签名
 prototype/shot-*.png
 prototype/.edgeprof/
+
+# 签名密钥：绝不进仓库（换机器重新生成一把，覆盖安装会被系统拒绝）
+android/keystore/
 *.keystore
+*.jks
 
 # 体积大 / 可再生的测试夹具（make_fixtures.py / make_edge_fixtures.py 会重新生成）
 sniffer/fixtures/long_note.txt

@@ -6,7 +6,7 @@
 2. **能读手机上下载目录里的任意文件** —— 不依赖扩展名，`*/*` 全放行（导出文件经常是无后缀的）。
 3. **零联网** —— 清单里没有 `INTERNET` 权限，解析与展示全在本地；`allowBackup="false"`，最近文件记录也不会被云备份带走。
 
-> 这是给「先在手机上真机试一遍」用的调试版，不是商店版本：包名 `com.dsh.chatviewer`，版本 1.1（versionCode 5），minSdk 26（Android 8.0），targetSdk 34，debug 签名。
+> 这是给「先在手机上真机试一遍」用的版本，不是商店版本：包名 `com.dsh.chatviewer`，版本 1.1（versionCode 5），minSdk 26（Android 8.0），targetSdk 34，自签名（密钥在 `android/keystore/`，见下方[签名](#签名)）。
 
 ## 构建
 
@@ -26,6 +26,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1
 依次查找；`build-tools` 和 `platforms` 自动挑版本号最大的那个，不用改脚本。
 
 脚本末尾会自动跑 `apksigner verify` + `aapt2 dump badging` 自检。
+
+## 签名
+
+密钥在 `android/keystore/`（`chat-viewer.jks` + `keystore.properties`），**不进仓库**（`.gitignore` 挡住）。
+第一次构建时脚本自动生成一把（PKCS12 / RSA 2048 / 10000 天），以后每次都用同一把 ——
+签名稳定，同包名覆盖安装才不会被系统拒绝。
+
+换成自己的正式密钥：
+
+```powershell
+$env:CV_KEYSTORE      = 'D:\keys\my-release.jks'
+$env:CV_KEYSTORE_PASS = '...'
+$env:CV_KEY_ALIAS     = 'myalias'
+$env:CV_KEY_PASS      = '...'   # 和 store 密码一样就不用填
+npm run apk
+```
+
+默认用 SDK 自带的 `apksigner`；想换成单独装的签名工具，指向它的可执行文件即可：
+
+```powershell
+$env:CV_APKSIGNER = 'D:\tools\apksigner\apksigner.bat'
+npm run apk
+```
+
+> 1.1 这个包就是用外部签名工具（APKSignBox 里带的 `apksigner`）签的，证书和 SDK 版一字不差（SHA-256 `674d5cc7…`），
+> 所以之前装过 1.1 测试包的手机可以直接覆盖升级。
+
+**密钥丢了 = 以后装不上更新**（只能卸载重装，最近文件记录会丢）。备份 `android/keystore/`。
 
 **两个踩过的坑，脚本里已经绕开：**
 
@@ -100,7 +128,7 @@ adb connect <手机IP>:<端口>
 - zip 能直接读，但加密条目需要密码（暂不支持）、套娃压缩包只提示不解开、包内 >48MB 的条目不自动读。
 - HTML 导出、CSV、导出/分享图片、会话收藏仍未做。
 - 全文搜索是逐条子串扫描（没有 FTS 索引），16MB 上限内够快，再大就要等流式方案。
-- debug 签名，装到不同手机上互相同包名覆盖安装会失败（签名一致所以其实可以，但正式版要换 release key）。
+- 自签名（密钥在本地 `android/keystore/`）。换机器或丢了密钥，新版就装不到旧版上面，得先卸载；要发正式版建议换成自己的 release key 并备份。
 
 ## 文件
 
@@ -108,6 +136,7 @@ adb connect <手机IP>:<端口>
 android/
 ├─ AndroidManifest.xml          # 无 INTERNET；allowBackup=false；minSdk 26 / targetSdk 34
 ├─ build-apk.ps1                # 一条命令构建（aapt2 → javac → d8 → zipalign → apksigner）
+├─ keystore/                    # 签名密钥（.gitignore 挡住，不进仓库）
 ├─ make-icon.py                 # 用 Pillow 画 icon.png（192×192）
 ├─ res/drawable/icon.png        # 桌面图标
 ├─ res/values/styles.xml        # AppTheme：窗口背景 #14161a，冷启动不闪白
@@ -136,7 +165,9 @@ APK 静态检查：
 - `dexdump`：`MainActivity`、`Bridge.pickFile/readUri/version/caps`、`deliver/post/readAndDeliver` 全在 dex 里
 - assets 八个文件与 `prototype/` 源文件的 SHA-256 逐一比对一致
 - 清单里 `allowBackup=false`（`aapt2 dump xmltree` 复核）
-- 1.1 的 APK：70,599 B，SHA-256 `219894DFAD5632042A1EFD94D0DE8A609EC22479212BBFE5A00D302AA5B5E31F`
+- 1.1 的 APK：70,599 B，证书 SHA-256 `674d5cc72fdb77920dd38c1b2f0f2e3c8355180d11b9af7c10bce854480c4e76`（这个包是用外部 apksigner 签的，见[签名](#签名)）
+
+> aapt2 会给每个条目录当前时间戳，同一份源码每次构建的 APK 哈希都不一样 —— 判断「能不能覆盖安装」看的是**证书指纹**，不是 APK 哈希。
 
 **没有**覆盖到的：真机上的 SAF 授权弹窗、系统 WebView 版本差异、Android 14 的分区存储细节 —— 这些只能等你在手机上装一次。
 

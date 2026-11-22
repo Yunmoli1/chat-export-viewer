@@ -138,6 +138,7 @@
 node test.js        # core.js 纯逻辑：36 条断言
 node test-text.js   # textblocks.js 块解析：38 条断言
 node test-zip.js    # zip.js：12 条（stored/deflate/ZIP64/GBK/加密/截断/JS inflate 兜底）
+node check-repo.js  # 仓库约定：build-apk.ps1 的 BOM、清单无 INTERNET、三处版本号一致
 
 # 下面这些是端到端验证：每个脚本自带 `harness.js`，会自己拉起一台 headless Edge/Chrome、
 # 开一个临时用户目录、跑完关掉。不需要事先开调试端口，也不需要手动清理进程。
@@ -188,7 +189,7 @@ Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑�
 - `app.js` —— DOM 渲染与交互
 - `index.html` —— 结构与内联样式
 - `samples.js` —— 由 `build-samples.js` 从 `../sniffer/fixtures` 与 `fixtures-text` 生成
-- `test.js` / `test-text.js` / `test-zip.js` / `verify-ui.js` / `verify-page.js` / `verify-text.js` / `verify-align.js` / `verify-scrub.js` / `verify-pops.js` / `verify-files.js` / `verify-mobile.js` / `verify-native.js` / `verify-zip.js` / `verify-search.js` —— 验证
+- `test.js` / `test-text.js` / `test-zip.js` / `check-repo.js` / `verify-ui.js` / `verify-page.js` / `verify-text.js` / `verify-align.js` / `verify-scrub.js` / `verify-pops.js` / `verify-files.js` / `verify-mobile.js` / `verify-native.js` / `verify-zip.js` / `verify-search.js` —— 验证
 - `fixtures-text/` —— 文本样本（`tavern_div.txt` 酒馆 div 导出、`cn_tags_dialogue.txt` 中文伪标签）
 - `shot-text-tavern.png` / `shot-text-cn.png` / `shot-text-manual.png` —— 文本模式截图
 - `shot-mobile-files.png` / `shot-mobile-full.png` / `shot-native-flow.png` —— 窄屏与原生流程截图

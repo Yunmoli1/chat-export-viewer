@@ -99,20 +99,52 @@ Step 'zipalign 4 字节对齐'
 $aligned = Join-Path $stage 'out\aligned.apk'
 RunExe (Join-Path $bt 'zipalign.exe') @('-f','4',$baseApk,$aligned)
 
-Step '生成 debug keystore（仅首次）'
-$ks = Join-Path $stage 'debug.keystore'
-if (-not (Test-Path $ks)) {
-  RunExe 'keytool' @('-genkeypair','-keystore',$ks,'-alias','androiddebugkey',
-    '-storepass','android','-keypass','android','-keyalg','RSA','-keysize','2048',
-    '-validity','10000','-dname','CN=DSH Debug,O=DSH,C=CN')
+Step '准备签名密钥（keystore/ 不进仓库；没有就自动生成一把）'
+# 签名必须稳定：同一个包名换一把密钥，手机就装不上更新（只能卸载重装，数据全没）。
+# 优先级：环境变量 CV_KEYSTORE（配 CV_KEYSTORE_PASS / CV_KEY_ALIAS）> android/keystore/ > 现场生成。
+$ksDir   = Join-Path $proj 'keystore'
+$ksProps = Join-Path $ksDir 'keystore.properties'
+if ($env:CV_KEYSTORE) {
+  $ks = $env:CV_KEYSTORE
+  if (-not (Test-Path $ks)) { throw "CV_KEYSTORE 指向的文件不存在：$ks" }
+  if (-not $env:CV_KEYSTORE_PASS) { throw '设置了 CV_KEYSTORE，就要一起设置 CV_KEYSTORE_PASS' }
+  $ksPass  = $env:CV_KEYSTORE_PASS
+  $keyPass = if ($env:CV_KEY_PASS) { $env:CV_KEY_PASS } else { $ksPass }
+  $ksAlias = if ($env:CV_KEY_ALIAS) { $env:CV_KEY_ALIAS } else { 'chatviewer' }
+} elseif (Test-Path $ksProps) {
+  $cfg = @{}
+  Get-Content $ksProps | ForEach-Object {
+    if ($_ -match '^\s*([^#=]+?)\s*=\s*(.*)$') { $cfg[$matches[1]] = $matches[2] }
+  }
+  $ks = Join-Path $ksDir $cfg['storeFile']
+  $ksPass  = $cfg['storePassword']
+  $keyPass = if ($cfg['keyPassword']) { $cfg['keyPassword'] } else { $ksPass }
+  $ksAlias = $cfg['keyAlias']
+} else {
+  New-Item -ItemType Directory -Force -Path $ksDir | Out-Null
+  $ks = Join-Path $ksDir 'chat-viewer.jks'
+  $ksAlias = 'chatviewer'
+  $alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  $ksPass = -join (1..24 | ForEach-Object { $alphabet[(Get-Random -Maximum $alphabet.Length)] })
+  $keyPass = $ksPass
+  RunExe 'keytool' @('-genkeypair','-keystore',$ks,'-storetype','PKCS12','-alias',$ksAlias,
+    '-storepass',$ksPass,'-keypass',$ksPass,'-keyalg','RSA','-keysize','2048',
+    '-validity','10000','-dname','CN=Chat Export Viewer,O=Chat Export Viewer,C=CN')
+  Set-Content -Path $ksProps -Encoding ASCII -Value @(
+    'storeFile=chat-viewer.jks', "storePassword=$ksPass", "keyAlias=$ksAlias", "keyPassword=$keyPass")
 }
+if (-not (Test-Path $ks)) { throw "找不到密钥文件：$ks" }
+'  keystore: {0}' -f $ks
+'  alias:    {0}' -f $ksAlias
 
 Step 'apksigner 签名'
+# 默认用 SDK 里的 apksigner；设了 CV_APKSIGNER 就用别的（比如单独装的签名工具）
+$apksigner = if ($env:CV_APKSIGNER) { $env:CV_APKSIGNER } else { Join-Path $bt 'apksigner.bat' }
 $signedApk = Join-Path $stage 'out\chat-viewer-debug.apk'
-RunExe (Join-Path $bt 'apksigner.bat') @('sign','--ks',$ks,'--ks-key-alias','androiddebugkey',
-  '--ks-pass','pass:android','--key-pass','pass:android',
+RunExe $apksigner @('sign','--ks',$ks,'--ks-key-alias',$ksAlias,
+  '--ks-pass',"pass:$ksPass",'--key-pass',"pass:$keyPass",
   '--v1-signing-enabled','true','--v2-signing-enabled','true','--out',$signedApk,$aligned)
-Write-Host '  (v1+v2 这样 Android 7 到 14 都能装)'
+Write-Host '  (minSdk 26 靠 v2/v3 就够，Android 7 到 15 都能装)'
 
 Step '自检 + 拷回工程目录'
 $outDir = Join-Path $proj 'build'
@@ -124,7 +156,7 @@ $distDir = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir 'chat-viewer-1.1-debug.apk'
 Copy-Item $signedApk $dist -Force
-& (Join-Path $bt 'apksigner.bat') 'verify' '--verbose' '--print-certs' $final
+& $apksigner 'verify' '--verbose' '--print-certs' $final
 & (Join-Path $bt 'aapt2.exe') 'dump' 'badging' $final
 Write-Host ''
 'APK: {0}' -f $final
