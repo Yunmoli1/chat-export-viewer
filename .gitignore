@@ -12,6 +12,13 @@ android/assets/
 prototype/shot-*.png
 prototype/.edgeprof/
 
+# 本地开发记录：只在作者机器上留着，不进仓库也不推送
+android/README.md
+prototype/README.md
+sniffer/README.md
+docs/design-*.md
+docs/appendix-*.md
+
 # 签名密钥：绝不进仓库（换机器重新生成一把，覆盖安装会被系统拒绝）
 android/keystore/
 *.keystore
