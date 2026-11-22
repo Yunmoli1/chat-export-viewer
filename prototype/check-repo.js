@@ -20,6 +20,31 @@ ok('build-apk.ps1 是 UTF-8 带 BOM',
 const manifest = fs.readFileSync(path.join(root, 'android', 'AndroidManifest.xml'), 'utf8');
 ok('AndroidManifest 没有 INTERNET 权限', !/android\.permission\.INTERNET/.test(manifest));
 
+// 用户内容一律走 textContent；innerHTML 只允许用来清空（赋值空串），
+// 这样即使导出文件里带了 script 标签 / onerror 属性也进不了 DOM。
+function scanHtmlWrites(src) {
+  const out = [];
+  const re = /\.innerHTML\s*=\s*/g;
+  let m;
+  while ((m = re.exec(src))) {
+    const rest = src.slice(re.lastIndex);
+    if (/^(''|"")\s*;/.test(rest)) continue;   // 只允许清空
+    out.push(src.slice(0, m.index).split('\n').length);
+  }
+  return out;
+}
+const jsFiles = ['app.js', 'textblocks.js', 'core.js', 'recents.js', 'scrubber.js', 'samples.js', 'zip.js'];
+const htmlWrites = [];
+for (const name of jsFiles) {
+  const src = fs.readFileSync(path.join(root, 'prototype', name), 'utf8');
+  scanHtmlWrites(src).forEach(function (line) { htmlWrites.push(name + ':' + line); });
+}
+ok('用户内容不进 innerHTML（只允许清空）', htmlWrites.length === 0, htmlWrites.join(', '));
+// 守卫自检：抓得到注入，放过清空
+ok('innerHTML 守卫自检',
+  scanHtmlWrites('a.innerHTML = "<b>x</b>";').length === 1 &&
+  scanHtmlWrites("a.innerHTML = '';").length === 0);
+
 // 版本号三处要一起改，漏一个就会出现「装的 1.1、里面写着 1.0」
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const verName = (manifest.match(/android:versionName="([^"]+)"/) || [])[1];

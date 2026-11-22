@@ -77,5 +77,19 @@ check('object values', core.resolve(root, '$.c.*').length === 1);
 check('index', core.resolve(root, '$.a[1].b')[0] === 2);
 check('pathStr roundtrip', core.pathStr(core.tokenize('$.a[*].b')) === '$.a[*].b', core.pathStr(core.tokenize('$.a[*].b')));
 
+// ---------- 6. 异常输入：解析器不许抛 ----------
+console.log('\n[6] malformed input');
+const weird = [null, [], {}, { mapping: {} }, { conversations: 'x' }, { title: 'no messages' },
+  { mapping: { a: { parent: null, message: null } }, current_node: 'a' }];
+let threw = '';
+for (const w of weird) {
+  try { core.inferCandidates(w); } catch (e) { threw = String(e && e.message); }
+}
+check('空/畸形 JSON 不抛异常', threw === '', threw);
+let deep = {}, cur = deep;
+for (let i = 0; i < 300; i++) { cur.a = {}; cur = cur.a; }
+try { core.inferCandidates(deep); check('深层嵌套不炸栈', true); }
+catch (e) { check('深层嵌套不炸栈', false, e.message); }
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
