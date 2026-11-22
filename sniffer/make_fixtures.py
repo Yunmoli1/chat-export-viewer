@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+import json, os, zipfile, random, struct
+
+BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+os.makedirs(BASE, exist_ok=True)
+
+def w(name, data, mode="w"):
+    p = os.path.join(BASE, name)
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    with open(p, "wb") as f:
+        f.write(data)
+    return p
+
+# ---------- ChatGPT export: mapping tree with an edited branch ----------
+def chatgpt():
+    def node(uid, role, text, parent=None, children=None, ct=1736209412.5):
+        return uid, {
+            "id": uid,
+            "message": {
+                "id": uid, "author": {"role": role, "name": None, "metadata": {}},
+                "create_time": ct, "content": {"content_type": "text", "parts": [text]},
+                "status": "finished_successfully", "end_turn": True,
+                "metadata": {"model_slug": "gpt-4o"}, "recipient": "all",
+            },
+            "parent": parent, "children": children or [],
+        }
+    n = {}
+    u1 = node("a1", "user", "用 Kotlin 写一个 JSON 查看器要注意什么？", "root", ["a2"])
+    a2 = node("a2", "assistant", "要注意流式解析、SAF 权限和大文件 OOM。", "a1", ["a3", "a4"])
+    a3 = node("a3", "user", "那 300MB 的文件怎么办？", "a2", ["a5"])
+    a5 = node("a5", "assistant", "用偏移动漫（offset）索引，按需 seek。", "a3", [])
+    a4 = node("a4", "user", "换个问法：大文件怎么处理？", "a2", ["a6"])
+    a6 = node("a6", "assistant", "同样建议建索引，不要整棵树读进内存。", "a4", [])
+    for x in (u1, a2, a3, a5, a4, a6):
+        n[x[0]] = x[1]
+    conv = {
+        "title": "Kotlin JSON 查看器设计",
+        "create_time": 1736209400, "update_time": 1736209800,
+        "mapping": n, "current_node": "a5",
+        "conversation_id": "8f3a2b1c-0000-0000-0000-000000000001",
+        "is_archived": False, "default_model_slug": "gpt-4o",
+        "gizmo_id": None, "id": "8f3a2b1c-0000-0000-0000-000000000001",
+    }
+    conv2 = {
+        "title": "周末去哪玩",
+        "create_time": 1736210000, "update_time": 1736210500,
+        "mapping": {},
+        "current_node": "b1", "conversation_id": "c2", "id": "c2",
+    }
+    conv2["mapping"] = {"b1": node("b1", "user", "杭州周末去哪？", "root", ["b2"])[1], "b2": node("b2", "assistant", "西湖、灵隐寺、龙井村。", "b1", [])[1]}
+    conv2["current_node"] = "b2"
+    return json.dumps([conv, conv2], ensure_ascii=False, indent=1)
+
+gpt = chatgpt()
+w("conversations.json", gpt)
+w("conversations", gpt)  # same content, no extension
+
+# ---------- Claude ----------
+claude = [{
+    "uuid": "c-1", "name": "Claude 导出测试",
+    "created_at": "2025-01-01T10:00:00Z",
+    "chat_messages": [
+        {"uuid": "m1", "text": "你好", "sender": "human", "parent_message_uuid": "00000000-0000-4000-8000-000000000000",
+         "created_at": "2025-01-01T10:00:00Z", "content": [{"type": "text", "text": "你好"}]},
+        {"uuid": "m2", "text": "你好，有什么可以帮你？", "sender": "assistant", "parent_message_uuid": "m1",
+         "created_at": "2025-01-01T10:00:05Z", "content": [{"type": "text", "text": "你好，有什么可以帮你？"}]}
+    ]
+}]
+w("claude_conversations.json", json.dumps(claude, ensure_ascii=False, indent=1))
+
+# ---------- SillyTavern jsonl ----------
+lines = []
+for i in range(6):
+    lines.append(json.dumps({
+        "name": "User" if i % 2 == 0 else "Seraphina",
+        "is_user": i % 2 == 0,
+        "is_system": False,
+        "mes": ("这是一条用户消息。" if i % 2 == 0 else "这是一条角色回复。") + f" #{i}",
+        "send_date": f"2025-01-0{i+1}T12:00:00Z",
+        "swipes": ["a", "b"], "extra": {"api": "openai"}
+    }, ensure_ascii=False))
+w("roleplay.jsonl", "\n".join(lines))
+
+# ---------- WeChat style GBK text ----------
+wx = "\n".join([
+    "2024-01-01 12:00:00 张三",
+    "你好啊，在吗？",
+    "2024-01-01 12:00:05 李四",
+    "在的，怎么了",
+    "2024-01-01 12:00:10 张三",
+    "[图片]",
+    "2024-01-01 12:00:15 系统",
+    "张三撤回了一条消息",
+])
+w("wechat_gbk.txt", wx.encode("gbk"))
+
+# ---------- WhatsApp ----------
+wa = "\n".join([
+    "[2024/01/01, 12:00:00] 张三: 你好啊",
+    "[2024/01/01, 12:00:10] 李四: 在的",
+    "这是一条换行续写的消息",
+    "[2024/01/01, 12:00:20] 张三: <Media omitted>",
+])
+w("whatsapp_chat.txt", wa)
+
+# ---------- HTML (Telegram-like) ----------
+w("chat.html", "<!DOCTYPE html><html><head><title>Telegram</title></head><body><div class='message'>hi</div></body></html>")
+
+# ---------- truncated json ----------
+full = gpt
+w("truncated.json", full[: int(len(full) * 0.55)])
+
+# ---------- random binary ----------
+random.seed(42)
+w("random.bin", bytes([random.randrange(256) for _ in range(4096)]))
+
+# ---------- empty ----------
+w("empty.txt", b"")
+
+# ---------- zip with shards + .dat image ----------
+png = bytes.fromhex("89504E470D0A1A0A") + b"\x00" * 120
+with zipfile.ZipFile(os.path.join(BASE, "export.zip"), "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("conversations-000.json", json.dumps([json.loads(gpt)[0]], ensure_ascii=False))
+    z.writestr("conversations-001.json", json.dumps([json.loads(gpt)[1]], ensure_ascii=False))
+    z.writestr("file-abc123.dat", png)
+    z.writestr("__MACOSX/._junk", b"\x00\x01")
+    z.writestr("README.txt", "export generated by test")
+
+# ---------- large plain text (2MB) ----------
+w("long_note.txt", ("这是一段很长的纯文本，用来测试大文件与无结构文本。\n" * 40000))
+
+print("fixtures ready:", sorted(os.listdir(BASE)))

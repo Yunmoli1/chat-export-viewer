@@ -1,0 +1,20 @@
+# 依赖与系统垃圾
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 构建产物：APK 由 android/build-apk.ps1 生成
+android/build/
+android/assets/
+
+# 验证脚本跑出来的截图、临时浏览器配置、签名
+prototype/shot-*.png
+prototype/.edgeprof/
+*.keystore
+
+# 体积大 / 可再生的测试夹具（make_fixtures.py / make_edge_fixtures.py 会重新生成）
+sniffer/fixtures/long_note.txt
+sniffer/fixtures_edge/big.json
+sniffer/out.json
+sniffer/out_edge.json

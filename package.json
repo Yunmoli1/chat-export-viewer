@@ -1,0 +1,27 @@
+{
+  "name": "chat-export-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "离线、免联网的聊天记录导出查看器：把 json / jsonl / txt / 无后缀文件读成可读对话（Web 原型 + Android APK）",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "serve": "node prototype/serve.js",
+    "test": "node prototype/test.js && node prototype/test-text.js",
+    "samples": "node prototype/build-samples.js",
+    "verify": "node prototype/verify-ui.js && node prototype/verify-text.js && node prototype/verify-files.js && node prototype/verify-mobile.js && node prototype/verify-align.js && node prototype/verify-scrub.js && node prototype/verify-pops.js && node prototype/verify-native.js",
+    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1"
+  },
+  "keywords": [
+    "chat",
+    "export",
+    "json",
+    "viewer",
+    "android",
+    "offline",
+    "chatgpt",
+    "claude"
+  ]
+}

@@ -1,0 +1,22 @@
+<div class="mes" data-role="user">
+  <div class="mes_header"><span class="name">{{user}}</span><span class="mes_time">22:38</span></div>
+  <div class="mes_text">你还记得回学校的那条路吗？</div>
+</div>
+
+<div class="mes" data-role="assistant">
+  <div class="mes_header"><span class="name">{{char}}</span><span class="mes_time">22:40</span></div>
+  <div class="mes_text">记得。路灯坏了两盏，我们就着手机的光走回去。</div>
+  <details class="think"><summary>内心</summary><div>她其实不想让人看出自己在发抖。</div></details>
+  <div class="stat"><span>时间</span> 22:40 &nbsp; <span>天气</span> 小雨 &nbsp; <span>好感</span> 47</div>
+</div>
+
+<div class="mes" data-role="user">
+  <div class="mes_header"><span class="name">{{user}}</span><span class="mes_time">22:41</span></div>
+  <div class="mes_text">那盏灯后来修好了。</div>
+</div>
+
+<div class="mes" data-role="assistant">
+  <div class="mes_header"><span class="name">{{char}}</span><span class="mes_time">22:42</span></div>
+  <div class="mes_text">那我们再走一次？这次换我举手机。</div>
+  <div class="status">状态：<b>心动</b> · 体力 61 / 100</div>
+</div>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 只为一个目的：冷启动时别闪白。WebView 的背景是 #14161a，窗口背景跟它一致。 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#14161a</item>
+        <item name="android:statusBarColor">#14161a</item>
+        <item name="android:navigationBarColor">#14161a</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

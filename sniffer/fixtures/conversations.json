@@ -1,0 +1,244 @@
+[
+ {
+  "title": "Kotlin JSON 查看器设计",
+  "create_time": 1736209400,
+  "update_time": 1736209800,
+  "mapping": {
+   "a1": {
+    "id": "a1",
+    "message": {
+     "id": "a1",
+     "author": {
+      "role": "user",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "用 Kotlin 写一个 JSON 查看器要注意什么？"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "root",
+    "children": [
+     "a2"
+    ]
+   },
+   "a2": {
+    "id": "a2",
+    "message": {
+     "id": "a2",
+     "author": {
+      "role": "assistant",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "要注意流式解析、SAF 权限和大文件 OOM。"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "a1",
+    "children": [
+     "a3",
+     "a4"
+    ]
+   },
+   "a3": {
+    "id": "a3",
+    "message": {
+     "id": "a3",
+     "author": {
+      "role": "user",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "那 300MB 的文件怎么办？"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "a2",
+    "children": [
+     "a5"
+    ]
+   },
+   "a5": {
+    "id": "a5",
+    "message": {
+     "id": "a5",
+     "author": {
+      "role": "assistant",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "用偏移动漫（offset）索引，按需 seek。"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "a3",
+    "children": []
+   },
+   "a4": {
+    "id": "a4",
+    "message": {
+     "id": "a4",
+     "author": {
+      "role": "user",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "换个问法：大文件怎么处理？"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "a2",
+    "children": [
+     "a6"
+    ]
+   },
+   "a6": {
+    "id": "a6",
+    "message": {
+     "id": "a6",
+     "author": {
+      "role": "assistant",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "同样建议建索引，不要整棵树读进内存。"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "a4",
+    "children": []
+   }
+  },
+  "current_node": "a5",
+  "conversation_id": "8f3a2b1c-0000-0000-0000-000000000001",
+  "is_archived": false,
+  "default_model_slug": "gpt-4o",
+  "gizmo_id": null,
+  "id": "8f3a2b1c-0000-0000-0000-000000000001"
+ },
+ {
+  "title": "周末去哪玩",
+  "create_time": 1736210000,
+  "update_time": 1736210500,
+  "mapping": {
+   "b1": {
+    "id": "b1",
+    "message": {
+     "id": "b1",
+     "author": {
+      "role": "user",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "杭州周末去哪？"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "root",
+    "children": [
+     "b2"
+    ]
+   },
+   "b2": {
+    "id": "b2",
+    "message": {
+     "id": "b2",
+     "author": {
+      "role": "assistant",
+      "name": null,
+      "metadata": {}
+     },
+     "create_time": 1736209412.5,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "西湖、灵隐寺、龙井村。"
+      ]
+     },
+     "status": "finished_successfully",
+     "end_turn": true,
+     "metadata": {
+      "model_slug": "gpt-4o"
+     },
+     "recipient": "all"
+    },
+    "parent": "b1",
+    "children": []
+   }
+  },
+  "current_node": "b2",
+  "conversation_id": "c2",
+  "id": "c2"
+ }
+]
