@@ -8,6 +8,11 @@ desktop.ini
 android/build/
 android/assets/
 
+# 临时文件
+tmp-*.js
+tmp-*.py
+tmp-*/
+
 # 验证脚本跑出来的截图、临时浏览器配置、签名
 prototype/shot-*.png
 prototype/.edgeprof/

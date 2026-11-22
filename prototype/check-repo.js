@@ -26,7 +26,7 @@ const verName = (manifest.match(/android:versionName="([^"]+)"/) || [])[1];
 const verCode = (manifest.match(/android:versionCode="(\d+)"/) || [])[1];
 const buildPs1 = fs.readFileSync(path.join(root, 'android', 'build-apk.ps1'), 'utf8');
 ok('package.json 与 AndroidManifest 版本一致',
-  !!verName && pkg.version.split('.')[0] + '.' + pkg.version.split('.')[1] === verName,
+  !!verName && pkg.version === verName,
   'package.json ' + pkg.version + ' / manifest ' + verName);
 ok('build-apk.ps1 的 --version-name 与清单一致',
   buildPs1.includes("'--version-name','" + verName + "'"),

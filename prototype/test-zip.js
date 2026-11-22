@@ -84,6 +84,38 @@ const sample = JSON.stringify([{ role: 'user', content: '你好，压缩包测�
   try { await Z.extract(zipEnc, ie.entries[0]); } catch (e) { msg = e.message; }
   ok('取加密条目会报错', () => assert.ok(/加了密|加密/.test(msg), msg));
 
+  // CRC 校验：把 stored 条目的数据改一个字节，中央目录里的 CRC 没变 → 必须报损坏
+  const bad = Buffer.from(zip);
+  const eReadme = info.entries[1];
+  const nl = bad.readUInt16LE(eReadme.offset + 26);
+  const el = bad.readUInt16LE(eReadme.offset + 28);
+  bad[eReadme.offset + 30 + nl + el] ^= 0xff;
+  let crcMsg = '';
+  try { await Z.extract(bad, Z.list(bad).entries[1]); } catch (e) { crcMsg = e.message; }
+  ok('数据被改动会报 CRC32 不匹配', () => assert.ok(/CRC32/.test(crcMsg), crcMsg));
+
+  // 解压输出硬上限：2MB 全零压缩后取 1MB 上限，两条解压路径都要拦住
+  const zeros = Buffer.alloc(2 * 1024 * 1024);
+  const zipBomb = buildZip([{ name: 'zeros.bin', data: zeros, method: 8 }]);
+  const bombEntry = Z.list(zipBomb).entries[0];
+  let bombMsg = '';
+  try { await Z.extract(zipBomb, bombEntry, { maxBytes: 1024 * 1024 }); } catch (e) { bombMsg = e.message; }
+  ok('解压输出超过上限被拒绝（DecompressionStream）', () => assert.ok(/上限|压缩炸弹/.test(bombMsg), bombMsg));
+
+  const keepDs = global.DecompressionStream;
+  delete global.DecompressionStream;
+  let bombMsg2 = '';
+  try { await Z.extract(zipBomb, bombEntry, { maxBytes: 1024 * 1024 }); } catch (e) { bombMsg2 = e.message; }
+  if (keepDs) global.DecompressionStream = keepDs;
+  ok('解压输出超过上限被拒绝（纯 JS inflate）', () => assert.ok(/上限|压缩炸弹/.test(bombMsg2), bombMsg2));
+
+  // 压缩比异常：声明 9MB 却只占 1KB，且不小于 8MB 的检查门槛
+  let ratioMsg = '';
+  try {
+    await Z.extract(zip, { name: 'bomb.json', encrypted: false, method: 8, size: 9 * 1024 * 1024, compSize: 1000, crc: 0, offset: 0 }, {});
+  } catch (e) { ratioMsg = e.message; }
+  ok('压缩比异常被拒绝', () => assert.ok(/压缩比|压缩炸弹/.test(ratioMsg), ratioMsg));
+
   // 坏输入
   ok('非 zip 返回 ok:false', () => assert.strictEqual(Z.list(Buffer.from('not a zip at all, just text')).ok, false));
   ok('截断的 zip 返回 ok:false', () => assert.strictEqual(Z.list(zip.subarray(0, 60)).ok, false));

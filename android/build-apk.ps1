@@ -1,4 +1,9 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿param(
+  # 本地调试用：构建出来的包里打开 WebView 远程调试（默认关闭）
+  [switch]$Debug
+)
+
+$ErrorActionPreference = 'Stop'
 # aapt2 在中文路径下会报 "系统找不到指定的文件 (2)"（-A 目录遍历失败），
 # 所以所有构建动作都在纯 ASCII 的中转目录里做，最后只把 APK 拷回工程目录。
 # 仓库根目录 = 本脚本所在目录的上一级，跟工程放在哪、叫什么都无关
@@ -39,10 +44,42 @@ function CopyTree($from, $to) {
 }
 
 Step '准备 ASCII 中转目录'
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+# 这个目录会被整个递归删除，所以只允许删「本脚本自己建的」：
+# 带标记文件的中转目录，或者系统临时目录下名字对得上的（老版本脚本建的）。
+$stage = [System.IO.Path]::GetFullPath($stage)
+$stageTop = $stage.TrimEnd('')
+$tmpRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+$userHome = if ($env:USERPROFILE) { [System.IO.Path]::GetFullPath($env:USERPROFILE).TrimEnd('') } else { '' }
+$marker = Join-Path $stage '.cv-build-stage'
+if ($stageTop -eq ([System.IO.Path]::GetPathRoot($stage)).TrimEnd('')) {
+  throw "CV_STAGE 指向磁盘根目录（$stage），拒绝删除"
+}
+if ($userHome -and $stageTop -eq $userHome) {
+  throw "CV_STAGE 指向用户主目录（$stage），拒绝删除"
+}
+if ($root.StartsWith($stageTop + '', [StringComparison]::OrdinalIgnoreCase) -or
+    $proj.StartsWith($stageTop + '', [StringComparison]::OrdinalIgnoreCase)) {
+  throw "CV_STAGE=$stage 是项目自己的上级目录，递归删除会连项目一起删掉，拒绝执行"
+}
+if (Test-Path $stage) {
+  $underTmp = $stageTop.StartsWith($tmpRoot.TrimEnd('') + '', [StringComparison]::OrdinalIgnoreCase)
+  $ours = (Test-Path $marker) -or ($underTmp -and (Split-Path $stageTop -Leaf) -like 'chat-viewer-build*')
+  if (-not $ours) {
+    throw "CV_STAGE=$stage 看起来不是本脚本创建的中转目录（没有 .cv-build-stage 标记），拒绝递归删除。换一个空目录，或手动清空后重试。"
+  }
+  Remove-Item $stage -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path $stage,(Join-Path $stage 'assets'),(Join-Path $stage 'src'),(Join-Path $stage 'out') | Out-Null
+Set-Content -Path $marker -Value 'created by android/build-apk.ps1' -Encoding ASCII
 Copy-Item (Join-Path $proj 'AndroidManifest.xml') $stage -Force
 CopyTree (Join-Path $proj 'src') (Join-Path $stage 'src')
+# 调试开关只在这次构建的副本里改，仓库里的 BuildCfg.java 永远是 false
+if ($Debug -or $env:CV_DEBUG -eq '1') {
+  $cfg = Join-Path $stage 'src\com\dsh\chatviewer\BuildCfg.java'
+  $text = [System.IO.File]::ReadAllText($cfg).Replace('DEBUG = false;', 'DEBUG = true;')
+  [System.IO.File]::WriteAllText($cfg, $text, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host '  调试构建：WebView 远程调试已打开'
+}
 CopyTree (Join-Path $proj 'res') (Join-Path $stage 'res')
 $files = 'index.html','core.js','textblocks.js','app.js','samples.js','recents.js','scrubber.js','zip.js'
 foreach ($f in $files) {
@@ -65,15 +102,15 @@ RunExe (Join-Path $bt 'aapt2.exe') @(
   '--manifest',(Join-Path $stage 'AndroidManifest.xml'),
   '-A',(Join-Path $stage 'assets'),
   '--min-sdk-version','26','--target-sdk-version','34',
-  '--version-code','5','--version-name','1.1',
+  '--version-code','6','--version-name','1.1.1',
   '--auto-add-overlay'
 )
 
 Step 'javac 编译 Java 源'
-$srcJava = Join-Path $stage 'src\com\dsh\chatviewer\MainActivity.java'
+$srcJava = Get-ChildItem (Join-Path $stage 'src') -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 $classes = Join-Path $stage 'out\classes'
 New-Item -ItemType Directory -Force -Path $classes | Out-Null
-RunExe 'javac' @('--release','11','-encoding','UTF-8','-classpath',$jar,'-d',$classes,$srcJava)
+RunExe 'javac' (@('--release','11','-encoding','UTF-8','-classpath',$jar,'-d',$classes) + $srcJava)
 
 Step 'd8 生成 classes.dex'
 $dexDir = Join-Path $stage 'out\dex'
@@ -154,7 +191,7 @@ Copy-Item $signedApk $final -Force
 # 再放一份到仓库根的 dist/，方便直接从仓库下载安装
 $distDir = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-$dist = Join-Path $distDir 'chat-viewer-1.1-debug.apk'
+$dist = Join-Path $distDir 'chat-viewer-1.1.1-debug.apk'
 Copy-Item $signedApk $dist -Force
 & $apksigner 'verify' '--verbose' '--print-certs' $final
 & (Join-Path $bt 'aapt2.exe') 'dump' 'badging' $final

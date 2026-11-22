@@ -1,6 +1,6 @@
 {
   "name": "chat-export-viewer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "离线、免联网的聊天记录导出查看器：把 json / jsonl / txt / 无后缀文件读成可读对话（Web 原型 + Android APK）",
   "license": "MIT",

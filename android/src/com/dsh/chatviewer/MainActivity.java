@@ -2,6 +2,7 @@ package com.dsh.chatviewer;
 
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.UriPermission;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -28,7 +29,9 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * 聊天导出查看器 —— WebView 壳。
@@ -54,11 +57,14 @@ public class MainActivity extends Activity {
     private String pendingReq = "pick";
     private ValueCallback<Uri[]> chooserCb;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    /** 本次进程里拿到过授权的 URI；配合持久化授权，挡住页面随便编一个 content:// 来读。 */
+    private final Set<String> granted = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        WebView.setWebContentsDebuggingEnabled(true);
+        // 远程调试只在调试构建里开；正式包里关掉，免得连上 adb 就能看页面里的聊天记录
+        WebView.setWebContentsDebuggingEnabled(BuildCfg.DEBUG);
 
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#14161a"));
@@ -69,10 +75,12 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowContentAccess(true);
-        s.setAllowFileAccessFromFileURLs(true);
-        s.setAllowUniversalAccessFromFileURLs(true);
+        // 页面只从 https://app.local/（拦截 assets）加载，不需要任何 file:// / content:// 直读能力。
+        // 这四个开关全关，最小权限：即便有人往页面里注入了内容，也摸不到本地文件。
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setLoadWithOverviewMode(false);
@@ -175,7 +183,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String version() {
-            return "1.1-native";
+            return "1.1.1-native";
         }
 
         @JavascriptInterface
@@ -211,14 +219,33 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.w(TAG, "takePersistableUriPermission failed: " + e.getMessage());
         }
+        granted.add(uri.toString());
         new Thread(new Runnable() {
             @Override public void run() { readAndDeliver(uri.toString(), req); }
         }).start();
     }
 
+    /** 这个 URI 是不是我们真的拿到过授权（持久化授权，或本次进程里刚选的）。 */
+    private boolean hasReadAccess(String uriStr) {
+        Uri uri = Uri.parse(uriStr);
+        if (uri == null || !"content".equals(uri.getScheme())) return false;
+        String s = uri.toString();
+        if (granted.contains(s)) return true;
+        for (UriPermission p : getContentResolver().getPersistedUriPermissions()) {
+            if (p.isReadPermission() && s.equals(p.getUri().toString())) return true;
+        }
+        return false;
+    }
+
     private void readAndDeliver(String uriStr, String reqId) {
         InputStream in = null;
         try {
+            // 页面传什么 URI 就读什么，等于把 ContentResolver 借给了 JS。
+            // 只放行「用户自己选过、且授权还在」的文档；其余一律拒绝。
+            if (!hasReadAccess(uriStr)) {
+                deliver(reqId, false, null, 0, uriStr, null, "没有这个文件的读取授权，请重新选择文件");
+                return;
+            }
             Uri uri = Uri.parse(uriStr);
             String name = queryName(uri);
             ContentResolver cr = getContentResolver();

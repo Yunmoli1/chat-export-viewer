@@ -14,9 +14,11 @@ folding things like `<div class="status">` or `【status】` into collapsible bl
 
 ## Install
 
-Android 8.0+, sideload this: **[Download chat-viewer-1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1-debug.apk)**
-(1.1, self-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
-and `allowBackup` is off, so the recent-files list never leaves the device via cloud backup.
+Android 8.0+, sideload this: **[Download chat-viewer-1.1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1.1-debug.apk)**
+(1.1.1, self-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
+and `allowBackup` is off, so the recent-files list never leaves the device via cloud backup. WebView remote
+debugging is compiled out of release builds, and WebView cannot read `file://` / `content://` — a file is only
+read by the native layer after you pick it yourself.
 
 No app needed either — open `prototype/index.html` in a browser (`file://` works, no server).
 
@@ -31,7 +33,8 @@ No app needed either — open `prototype/index.html` in a browser (`file://` wor
 - **Opens ZIP exports directly.** It reads the central directory itself, handles stored/deflate, ZIP64 and
   GBK filenames, scores entries by name and content to find the chat file, merges `conversations-000.json`
   shards, and falls back to a pickable file list with a "looks like chat" filter. Encrypted entries are
-  explained, not guessed at.
+  explained, not guessed at. Each entry is capped at 64 MB of output (zip-bomb guard) and checked against
+  its CRC32, so a corrupt archive says so instead of showing garbage.
 - **Full-text search across every conversation**: hit list with "conversation · excerpt", click to jump
   and flash the message, Enter to cycle, multi-word AND. Substring scan, no index — instant for the
   file sizes the app accepts. On narrow screens the header grows a "Search" button that scrolls to the
@@ -52,7 +55,8 @@ No app needed either — open `prototype/index.html` in a browser (`file://` wor
 
 - The web version parses everything in memory; the Android shell caps a single file at 16 MB.
 - ZIP is read-only: encrypted entries need a password (unsupported), nested zips are only pointed out,
-  entries over 48 MB are not auto-read. No PDF/image export, no CSV. Search is a substring scan.
+  entries over 48 MB are not auto-read, and one entry stops at 64 MB of decompressed output.
+  No PDF/image export, no CSV. Search is a substring scan.
 - HTML exports are parsed heuristically by tags and class names, not a real DOM.
 - Self-signed; not a store release.
 

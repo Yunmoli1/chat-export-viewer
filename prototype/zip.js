@@ -1,13 +1,40 @@
 /* 极简 ZIP 读取器：只做「列条目 + 取内容」，够聊天导出用。
    支持：stored(0) / deflate(8)、ZIP64 中央目录、UTF-8 与 GB18030 文件名、目录条目、加密标记。
    解压优先 DecompressionStream('deflate-raw')；老 WebView 没有时退回内置 inflate（纯 JS）。
-   不写盘、不依赖库；整个文件在内存里，调用方负责大小上限。 */
+   不写盘、不依赖库；整个文件在内存里。
+   安全边界（都在本文件里兜住，不依赖调用方）：条目数上限、单条目解压输出硬上限、
+   压缩比上限、CRC32 校验。ZIP 头里声明的大小一律当成不可信。 */
 (function (global) {
   'use strict';
 
   function u16(d, o) { return d[o] | (d[o + 1] << 8); }
   function u32(d, o) { return (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0; }
   function u64(d, o) { return u32(d, o) + u32(d, o + 4) * 4294967296; }
+
+  // ---- 安全上限 ----
+  var MAX_ENTRY_OUT = 64 * 1024 * 1024;   // 单个条目解压后的硬上限
+  var MAX_ENTRIES   = 20000;              // 中央目录条目数上限
+  var MAX_RATIO     = 200;                // 压缩比上限（只拦明显离谱的，正常文本一般 <10）
+  var RATIO_MIN     = 8 * 1024 * 1024;    // 压缩比检查只作用于大于这个值的条目
+
+  function mbText(n) { return Math.round(n / 1024 / 1024) + ' MB'; }
+
+  // CRC32（IEEE 802.3），用于核对解压结果是否和中央目录登记的一致
+  var CRC_TABLE = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(d) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < d.length; i++) c = CRC_TABLE[(c ^ d[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
 
   function findEOCD(d) {
     var start = Math.max(0, d.length - 0x10016);
@@ -68,6 +95,8 @@
 
     if (cdOff + cdSize > d.length + 1) return { ok: false, error: '中央目录越界，文件可能不完整' };
 
+    if (total > MAX_ENTRIES) return { ok: false, error: 'ZIP 里条目太多（' + total + ' 个），超过 ' + MAX_ENTRIES + ' 个上限' };
+
     var entries = [];
     var p = cdOff;
     for (var i = 0; i < total; i++) {
@@ -120,14 +149,17 @@
   var DEXT = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
   var CLORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
-  function inflateRaw(src, expected) {
+  function inflateRaw(src, expected, limit) {
+    var max = limit > 0 ? limit : MAX_ENTRY_OUT;
     var pos = 0, bitbuf = 0, bitcnt = 0;
-    var cap = expected > 0 ? expected : Math.max(1 << 12, src.length * 4);
+    var cap = expected > 0 ? Math.min(expected, max) : Math.min(Math.max(1 << 12, src.length * 4), max);
     var out = new Uint8Array(cap), op = 0;
 
     function ensure(extra) {
+      // 声明大小不可信：按实际输出计数，到顶就停
+      if (op + extra > max) throw new Error('解压后超过 ' + mbText(max) + ' 上限，文件可能是压缩炸弹');
       if (op + extra <= out.length) return;
-      var next = new Uint8Array(Math.max(out.length * 2, op + extra));
+      var next = new Uint8Array(Math.min(max, Math.max(out.length * 2, op + extra)));
       next.set(out.subarray(0, op));
       out = next;
     }
@@ -255,28 +287,54 @@
     try { return !!new DecompressionStream('deflate-raw'); } catch (e) { return false; }
   }
 
-  function inflateWithStream(src, expected) {
+  function inflateWithStream(src, expected, limit) {
+    var max = limit > 0 ? limit : MAX_ENTRY_OUT;
     var ds = new DecompressionStream('deflate-raw');
-    var stream = new Blob([src]).stream().pipeThrough(ds);
-    return new Response(stream).arrayBuffer().then(function (buf) {
-      var out = new Uint8Array(buf);
-      if (expected > 0 && out.length !== expected) {
-        // 大小对不上说明头里的值不可信，以实际解压结果为准
-      }
-      return out;
-    });
+    var reader = new Blob([src]).stream().pipeThrough(ds).getReader();
+    var chunks = [], total = 0;
+
+    function pump() {
+      return reader.read().then(function (r) {
+        if (r.done) {
+          var out = new Uint8Array(total), at = 0;
+          for (var i = 0; i < chunks.length; i++) { out.set(chunks[i], at); at += chunks[i].length; }
+          // expected 只用来预分配，实际长度以解压结果为准
+          return out;
+        }
+        total += r.value.length;
+        if (total > max) {
+          try { reader.cancel(); } catch (e) { /* 已结束就算了 */ }
+          throw new Error('解压后超过 ' + mbText(max) + ' 上限，文件可能是压缩炸弹');
+        }
+        chunks.push(r.value);
+        return pump();
+      });
+    }
+    return pump();
   }
 
-  function inflateRawAsync(src, expected) {
+  function inflateRawAsync(src, expected, limit) {
     if (canStream()) {
-      return inflateWithStream(src, expected).catch(function () { return inflateRaw(src, expected); });
+      return inflateWithStream(src, expected, limit).catch(function () { return inflateRaw(src, expected, limit); });
     }
-    return Promise.resolve().then(function () { return inflateRaw(src, expected); });
+    return Promise.resolve().then(function () { return inflateRaw(src, expected, limit); });
+  }
+
+  function checkCrc(entry, out) {
+    if (crc32(out) !== entry.crc) {
+      return Promise.reject(new Error('解压后校验失败（CRC32 不匹配），文件可能已损坏：' + entry.name));
+    }
+    return Promise.resolve();
   }
 
   // 取出一个条目的原始字节；返回 Promise<Uint8Array>
-  function extract(d, entry) {
+  // opts.maxBytes 可覆盖单条目上限（默认 64MB），测试里用得上
+  function extract(d, entry, opts) {
+    var limit = (opts && opts.maxBytes > 0) ? opts.maxBytes : MAX_ENTRY_OUT;
     if (entry.encrypted) return Promise.reject(new Error('这个条目加了密（需要密码），暂不支持'));
+    if (entry.size > RATIO_MIN && entry.compSize > 0 && entry.size / entry.compSize > MAX_RATIO) {
+      return Promise.reject(new Error('压缩比异常（声明 ' + mbText(entry.size) + '），可能是压缩炸弹：' + entry.name));
+    }
     var o = entry.offset;
     if (o + 30 > d.length || u32(d, o) !== 0x04034b50) return Promise.reject(new Error('本地文件头损坏：' + entry.name));
     var nameLen = u16(d, o + 26), extraLen = u16(d, o + 28);
@@ -284,12 +342,22 @@
     var end = start + entry.compSize;
     if (end > d.length) return Promise.reject(new Error('条目数据越界：' + entry.name));
     var raw = d.subarray(start, end);
-    if (entry.method === 0) return Promise.resolve(new Uint8Array(raw));
-    if (entry.method === 8) return inflateRawAsync(raw, entry.size);
+    if (entry.method === 0) {
+      if (raw.length > limit) return Promise.reject(new Error('解压后超过 ' + mbText(limit) + ' 上限：' + entry.name));
+      var copy = new Uint8Array(raw);
+      return checkCrc(entry, copy).then(function () { return copy; });
+    }
+    if (entry.method === 8) {
+      return inflateRawAsync(raw, entry.size, limit).then(function (out) {
+        return checkCrc(entry, out).then(function () { return out; });
+      });
+    }
     return Promise.reject(new Error('不支持的压缩方式 ' + entry.method + '（只认 stored / deflate）：' + entry.name));
   }
 
-  var api = { list: list, extract: extract, inflateRaw: inflateRaw, canStream: canStream, decodeName: decodeName };
+  var api = { list: list, extract: extract, inflateRaw: inflateRaw, canStream: canStream,
+              decodeName: decodeName, crc32: crc32,
+              limits: { entryOut: MAX_ENTRY_OUT, entries: MAX_ENTRIES, ratio: MAX_RATIO } };
   global.ChatZip = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

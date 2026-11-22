@@ -14,11 +14,12 @@
 
 Android 8.0 以上，直接装：
 
-**[下载 chat-viewer-1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1-debug.apk)**
+**[下载 chat-viewer-1.1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1.1-debug.apk)**
 
-- 版本 1.1，包名 `com.dsh.chatviewer`，约 69 KB。
+- 版本 1.1.1，包名 `com.dsh.chatviewer`，约 69 KB。
 - **清单里没有 `INTERNET` 权限** —— 装完可以在系统设置里核对：它没有联网能力。
 - 也关掉了 `allowBackup`，最近文件记录不会被系统云备份带走。
+- 正式包关掉了 WebView 远程调试，WebView 本身也不许读本地 `file://` / `content://`；文件只在你亲手选中之后由原生层读一次。
 - 第一次安装需要允许「安装未知来源应用」。
 
 不想装 App 也行：双击 `prototype/index.html`，浏览器里跑同一套代码（`file://` 即可，无需服务器）。
@@ -91,6 +92,7 @@ ChatGPT 的导出常常是一个 zip，里面 `conversations.json`、附件目�
 - 自动猜哪个文件像聊天记录：按名字（conversation / message / chat / 聊天 / 记录）、内容
   （开头是 `[` `{`）、体积打分，最多试 6 个，跳过 48MB 以上的附件。
 - 分片导出（`conversations-000.json`、`-001` …）自动按序号合并。
+- 单个条目解压上限 64 MB（防止压缩炸弹），解压后核对 CRC32：坏包会说明文件损坏，而不是给你一堆乱码。
 - 猜不出来就把包里的文件列出来，带「只看像聊天的」过滤，点哪行读哪个；加密条目会说明需要密码。
 
 | 桌面 | 手机 |
