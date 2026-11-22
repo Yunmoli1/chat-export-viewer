@@ -14,7 +14,7 @@ folding things like `<div class="status">` or `【status】` into collapsible bl
 
 ## Install
 
-Android 8.0+, sideload this: **[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
+Android 8.0+, sideload this: **[Download chat-viewer-1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1-debug.apk)**
 (1.1, self-signed, ~69 KB, `com.dsh.chatviewer`). Check the manifest: there is **no `INTERNET` permission**,
 and `allowBackup` is off, so the recent-files list never leaves the device via cloud backup.
 

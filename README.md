@@ -14,7 +14,7 @@
 
 Android 8.0 以上，直接装：
 
-**[dist/chat-viewer-1.1-debug.apk](dist/chat-viewer-1.1-debug.apk)**
+**[下载 chat-viewer-1.1-debug.apk](https://github.com/Yunmoli1/chat-export-viewer/releases/latest/download/chat-viewer-1.1-debug.apk)**
 
 - 版本 1.1，包名 `com.dsh.chatviewer`，自签名，约 69 KB。
 - **清单里没有 `INTERNET` 权限** —— 装完可以在系统设置里核对：它没有联网能力。
