@@ -66,8 +66,22 @@ The APK needs Node 22+, JDK 11+ and an Android SDK:
 npm run apk
 ```
 
-Artifacts land in `android/build/` and `dist/`. Signing keys, environment overrides and SDK lookup order
-are documented in [android/README.md](android/README.md).
+Artifacts land in `android/build/` and a copy in `dist/`; the script then runs `apksigner verify` and
+`aapt2 dump badging` as a self-check.
+
+**Signing**: the key lives in `android/keystore/` (not committed; a PKCS12 / RSA 2048 key is generated on the
+first build and reused afterwards, so same-package upgrades do not get rejected). To use your own key or a
+different apksigner:
+
+```powershell
+$env:CV_KEYSTORE      = 'D:\keys\my-release.jks'
+$env:CV_KEYSTORE_PASS = '...'
+$env:CV_KEY_ALIAS     = 'myalias'
+$env:CV_APKSIGNER     = 'D:\tools\apksigner\apksigner.bat'
+npm run apk
+```
+
+Lose the key and phones with an older version installed cannot take an update — back it up.
 
 ## License
 

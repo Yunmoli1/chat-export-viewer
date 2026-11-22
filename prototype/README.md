@@ -196,4 +196,4 @@ Windows 与 Linux/macOS 的常见位置。也可以 `npm run verify` 一次跑�
 - `shot-scrub.png` / `shot-scrub-mobile.png` —— 滑轨（桌面 / 手机）
 - `shot-align-blocks.png` / `shot-align-stdiv.png` / `shot-align-swapped.png` / `shot-align-manual.png` / `shot-align-json.png` —— 左右位置截图
 - `shot-zip.png` / `shot-zip-mobile.png` / `shot-search.png` / `shot-search-mobile.png` —— 压缩包与全文搜索截图
-- 打包装 APK：见 `../android/README.md`
+- 打包装 APK：`npm run apk`（细节见根目录 README）

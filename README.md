@@ -127,14 +127,28 @@ ChatGPT 的导出常常是一个 zip，里面 `conversations.json`、附件目�
 
 网页版不需要构建：直接打开 `prototype/index.html`。
 
-APK 需要 Node 22+、JDK 11+ 和 Android SDK：
+APK 需要 Node 22+、JDK 11+ 和 Android SDK（`build-tools` + `platforms`）。
+SDK 位置按 `ANDROID_HOME` → `ANDROID_SDK_ROOT` → 常见安装路径依次查找：
 
 ```powershell
 npm run apk
 ```
 
-产物在 `android/build/` 和 `dist/`。签名密钥、环境变量、SDK 查找顺序这些细节见
-[android/README.md](android/README.md)。
+产物在 `android/build/`，同时复制一份到 `dist/`；脚本末尾自动跑 `apksigner verify` 和
+`aapt2 dump badging` 自检。
+
+**签名**：密钥放在 `android/keystore/`（不进仓库，第一次构建自动生成 PKCS12 / RSA 2048，之后一直复用，
+这样同包名覆盖安装不会被系统拒绝）。换成自己的密钥或别的 apksigner：
+
+```powershell
+$env:CV_KEYSTORE      = 'D:\keys\my-release.jks'
+$env:CV_KEYSTORE_PASS = '...'
+$env:CV_KEY_ALIAS     = 'myalias'
+$env:CV_APKSIGNER     = 'D:\tools\apksigner\apksigner.bat'
+npm run apk
+```
+
+密钥丢了，之前装过旧版本的手机就装不上新版本，记得备份。
 
 ## 许可
 
