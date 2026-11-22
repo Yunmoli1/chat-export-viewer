@@ -1,7 +1,8 @@
 # Chat Export Viewer
 
-Read chat exports (`json`, `jsonl`, `txt`, or files with **no extension at all**) as an actual conversation.
-Runs fully offline on your phone: no account, no upload, not even the `INTERNET` permission.
+Read chat exports (`json`, `jsonl`, `txt`, `.zip`, or files with **no extension at all**) as a conversation you
+can scroll and search — ChatGPT, Claude, SillyTavern. Runs fully offline on your phone: no account, no upload,
+not even the `INTERNET` permission.
 
 Exporting a chat usually ends with a `conversations.json` nobody opens again — tree-shaped `mapping`,
 dozens of metadata fields, nested `parts`. This tool hides that noise and keeps only "who said what",

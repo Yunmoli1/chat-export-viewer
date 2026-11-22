@@ -1,6 +1,6 @@
 # 聊天导出查看器 · Chat Export Viewer
 
-把各种聊天记录导出文件（json / jsonl / txt / 无后缀文件）读成**能翻的对话**：手机上一键打开，离线、不联网、不上传。
+把各种聊天记录导出文件（json / jsonl / txt / 无后缀文件 / zip）读成**能滑、能搜的对话**：ChatGPT、Claude、酒馆（SillyTavern）导出的都行，手机上一键打开，离线、不联网、不上传。
 
 很多人把对话导出成 `conversations.json` 之后就没再打开过 —— 树形的 `mapping`、几十个字段的
 元数据、层层嵌套的 `parts`，用文本编辑器看是一坨噪声。这个工具把这些噪声挡在外面，
